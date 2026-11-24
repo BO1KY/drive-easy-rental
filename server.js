@@ -3,7 +3,7 @@ const express = require('express');
 const session = require('express-session');
 const path = require('path');
 const crypto = require('crypto');
-const { db, hashPassword, verifyPassword, getSettings, DEFAULT_SETTINGS } = require('./db');
+const { db, hashPassword, verifyPassword, getSettings, DEFAULT_SETTINGS, demoCounts, addDemoData, clearDemoData } = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1422,6 +1422,19 @@ app.put('/api/admin/settings', requirePerm('settings:write'), (req, res) => {
   } catch (e) {
     res.status(e.status || 500).json({ error: e.status ? e.message : 'Could not save settings.' });
   }
+});
+
+// ================= ADMIN: DEMO / SAMPLE DATA =================
+app.get('/api/admin/demo-data', requirePerm('admin:only'), (req, res) => {
+  res.json({ counts: demoCounts() });
+});
+
+app.post('/api/admin/demo-data/add', requirePerm('admin:only'), (req, res) => {
+  res.json(addDemoData());
+});
+
+app.post('/api/admin/demo-data/remove', requirePerm('admin:only'), (req, res) => {
+  res.json(clearDemoData());
 });
 
 // ---------- 404 + generic error handlers (no stack traces leaked) ----------

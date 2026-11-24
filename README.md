@@ -41,6 +41,7 @@ SQLite database using Node's built-in `node:sqlite` driver (no external database
   (card/cash/bank transfer/mobile money), calculate cash change and create a paid invoice for walk-in rentals
 - Admin chooses each staff member's exact permissions; revenue and charts are restricted to admin/manager
 - Invoice list has status filters, search and CSV export
+- Admin-only **Demo Data** section: add/remove clearly marked sample records without touching real data
 
 **Backend / data**
 

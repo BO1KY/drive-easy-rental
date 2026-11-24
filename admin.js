@@ -16,6 +16,7 @@ function applyRoleUI() {
   nav('quotes', 'quotes:write');
   nav('invoices', 'invoices:write');
   nav('staff', 'staff:manage');
+  nav('demo', 'admin:only');
   nav('customers', 'view_customers');
   nav('messages', 'view_messages');
   nav('reviews', 'view_reviews');
@@ -112,6 +113,7 @@ async function refreshAll() {
   loadQuotes();
   loadInvoices();
   loadStaff();
+  loadDemo();
   loadCustomers();
   loadMessages();
   loadReviews();
@@ -1656,6 +1658,37 @@ $('#staffForm').addEventListener('submit', async e => {
     staffBackdrop.hidden = true;
     toast('Staff account created.');
     loadStaff();
+  } catch (err) { toast(err.message, 'error'); }
+});
+
+// ---------- Demo / sample data ----------
+async function loadDemo() {
+  if (!can('admin:only')) return;
+  const box = $('#demoCounts');
+  if (!box) return;
+  try {
+    const data = await api('/api/admin/demo-data');
+    box.innerHTML = Object.entries(data.counts).map(([label, value]) => `
+      <div class="profile-kpi"><div class="num">${value}</div><div class="lbl">${esc(label)}</div></div>
+    `).join('');
+  } catch (err) { toast(err.message, 'error'); }
+}
+$('#refreshDemoBtn').addEventListener('click', loadDemo);
+$('#addDemoBtn').addEventListener('click', async () => {
+  try {
+    const out = await api('/api/admin/demo-data/add', { method: 'POST' });
+    toast(out.added ? 'Demo data added.' : 'Demo data was already present.');
+    loadDemo();
+    refreshAll();
+  } catch (err) { toast(err.message, 'error'); }
+});
+$('#removeDemoBtn').addEventListener('click', async () => {
+  if (!confirm('Remove all demo records? Real data is not affected.')) return;
+  try {
+    const out = await api('/api/admin/demo-data/remove', { method: 'POST' });
+    toast(`Removed ${out.removed} demo record(s).`);
+    loadDemo();
+    refreshAll();
   } catch (err) { toast(err.message, 'error'); }
 });
 

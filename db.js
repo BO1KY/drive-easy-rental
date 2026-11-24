@@ -181,6 +181,11 @@ CREATE INDEX IF NOT EXISTS idx_reviews_car       ON reviews(car_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_status    ON reviews(status);
 `);
 
+for (const table of ['cars', 'customers', 'bookings', 'reviews', 'contact_messages', 'quotes', 'invoices']) {
+  const cols = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map(r => r.name));
+  if (!cols.has('demo')) db.exec(`ALTER TABLE ${table} ADD COLUMN demo INTEGER NOT NULL DEFAULT 0`);
+}
+
 const carColumns = new Set(db.prepare('PRAGMA table_info(cars)').all().map(r => r.name));
 if (!carColumns.has('quantity')) db.exec('ALTER TABLE cars ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1');
 
@@ -219,6 +224,7 @@ function verifyPassword(password, stored) {
 }
 
 // ---------- seed cars ----------
+const freshInstall = db.prepare('SELECT COUNT(*) AS n FROM cars').get().n === 0;
 const carCount = db.prepare('SELECT COUNT(*) AS n FROM cars').get().n;
 if (carCount === 0) {
   const img = (txt) => `https://placehold.co/640x400/0f4c81/ffffff?text=${encodeURIComponent(txt)}`;
@@ -413,6 +419,106 @@ if (db.prepare('SELECT COUNT(*) AS n FROM staff_accounts').get().n === 0) {
   insertStaff.run('Ndapewa Amutenya', 'ndapewa@driveeasy.example', 'ndapewa', hashPassword(staffPassword), 'manager');
 }
 
+if (freshInstall) {
+  db.transaction(() => {
+    for (const table of ['cars', 'customers', 'bookings', 'reviews', 'contact_messages', 'quotes', 'invoices']) {
+      db.exec(`UPDATE ${table} SET demo = 1`);
+    }
+  })();
+}
+
+function demoCounts() {
+  const out = {};
+  for (const table of ['cars', 'customers', 'bookings', 'reviews', 'messages', 'quotes', 'invoices']) {
+    const source = table === 'messages' ? 'contact_messages' : table;
+    out[table] = db.prepare(`SELECT COUNT(*) AS n FROM ${source} WHERE demo = 1`).get().n;
+  }
+  return out;
+}
+
+function addDemoData() {
+  if (db.prepare("SELECT id FROM cars WHERE demo = 1 AND name = 'Demo Corolla 1.8'").get()) {
+    return { added: false, counts: demoCounts() };
+  }
+  const day = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+  const stamp = Date.now().toString(36).toUpperCase();
+  return db.transaction(() => {
+    const img = (t) => `https://placehold.co/640x400/0f4c81/ffffff?text=${encodeURIComponent(t)}`;
+    const car1 = Number(db.prepare(`INSERT INTO cars
+      (name, brand, category, year, daily_rate, transmission, fuel_type, seats, doors, image_url, description, features, status, featured, quantity, demo)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'available',0,2,1)`).run(
+      'Demo Corolla 1.8', 'Toyota', 'Sedan', 2023, 42, 'Automatic', 'Petrol', 5, 4,
+      img('Demo Corolla'), 'Demo vehicle — safe to remove.', 'AC,Bluetooth',
+    ).lastInsertRowid);
+    const car2 = Number(db.prepare(`INSERT INTO cars
+      (name, brand, category, year, daily_rate, transmission, fuel_type, seats, doors, image_url, description, features, status, featured, quantity, demo)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'available',0,1,1)`).run(
+      'Demo BMW 320i', 'BMW', 'Luxury', 2024, 105, 'Automatic', 'Petrol', 5, 4,
+      img('Demo BMW'), 'Demo vehicle — safe to remove.', 'AC,GPS,Leather Seats',
+    ).lastInsertRowid);
+    const cust = Number(db.prepare(`INSERT INTO customers
+      (full_name, email, phone, license_ref, address, password_hash, status, demo)
+      VALUES (?,?,?,?,?,?,'active',1)`).run(
+      'Demo Client', 'demo.client@driveeasy.example', '+264 81 555 0101', 'DL-DEMO', 'Demo Street',
+      hashPassword('demo1234'),
+    ).lastInsertRowid);
+    const booking = Number(db.prepare(`INSERT INTO bookings
+      (booking_code, car_id, customer_id, customer_name, customer_email, customer_phone, license_ref,
+       pickup_location, pickup_date, return_date, total_days, add_ons, subtotal, vat, total_amount, status, notes, demo)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',?,1)`).run(
+      'CR-DEMO-' + stamp, car1, cust, 'Demo Client', 'demo.client@driveeasy.example', '+264 81 555 0101',
+      'DL-DEMO', 'Main Office', day(10), day(13), 3, '{"insurance":true}', 140.87, 21.13, 162, 'Demo booking — safe to remove.',
+    ).lastInsertRowid);
+    db.prepare(`INSERT INTO quotes
+      (quote_no, customer_name, customer_email, customer_phone, car_id, pickup_date, return_date, total_days,
+       add_ons, subtotal, vat, total_amount, valid_until, notes, status, created_by, demo)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'open','admin',1)`).run(
+      'Q-DEMO-' + stamp, 'Demo Client', 'demo.client@driveeasy.example', '+264 81 555 0101', car2,
+      day(20), day(22), 2, '{}', 182.61, 27.39, 210, day(7), 'Demo quotation — safe to remove.',
+    );
+    db.prepare(`INSERT INTO invoices
+      (invoice_no, booking_id, booking_code, customer_name, customer_email, customer_phone, car_label,
+       pickup_date, return_date, total_days, subtotal, vat, total_amount, status, payment_method,
+       payment_reference, due_date, notes, created_by, demo)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'unpaid','','',?,?,'admin',1)`).run(
+      'INV-DEMO-' + stamp, booking, 'CR-DEMO-' + stamp, 'Demo Client', 'demo.client@driveeasy.example',
+      '+264 81 555 0101', 'Toyota Demo Corolla 1.8', day(10), day(13), 3, 140.87, 21.13, 162,
+      day(5), 'Demo invoice — safe to remove.',
+    );
+    db.prepare(`INSERT INTO reviews
+      (car_id, customer_id, reviewer_name, rating, title, comment, status, demo)
+      VALUES (?,?,?,?,?,?,'published',1)`).run(
+      car1, cust, 'Demo Client', 5, 'Great demo car', 'Sample review for demonstration purposes.',
+    );
+    db.prepare(`INSERT INTO contact_messages
+      (name, email, phone, subject, message, status, demo)
+      VALUES (?,?,?,?,?,'new',1)`).run(
+      'Demo Sender', 'demo.sender@driveeasy.example', '+264 81 555 0102', 'Demo enquiry',
+      'This is a sample contact message for demonstration purposes.',
+    );
+    return { added: true, counts: demoCounts() };
+  })();
+}
+
+function clearDemoData() {
+  return db.transaction(() => {
+    // Keep demo records that real data still depends on — promote them instead of deleting.
+    db.exec(`UPDATE cars SET demo = 0 WHERE demo = 1 AND (
+      EXISTS (SELECT 1 FROM bookings WHERE bookings.car_id = cars.id AND bookings.demo = 0) OR
+      EXISTS (SELECT 1 FROM quotes WHERE quotes.car_id = cars.id AND quotes.demo = 0)
+    )`);
+    db.exec(`UPDATE bookings SET demo = 0 WHERE demo = 1 AND
+      EXISTS (SELECT 1 FROM invoices WHERE invoices.booking_id = bookings.id AND invoices.demo = 0)`);
+    db.exec(`UPDATE customers SET demo = 0 WHERE demo = 1 AND
+      EXISTS (SELECT 1 FROM bookings WHERE bookings.customer_id = customers.id AND bookings.demo = 0)`);
+    let removed = 0;
+    for (const table of ['invoices', 'quotes', 'reviews', 'bookings', 'contact_messages', 'customers', 'cars']) {
+      removed += db.prepare(`DELETE FROM ${table} WHERE demo = 1`).run().changes;
+    }
+    return { removed, counts: demoCounts() };
+  })();
+}
+
 function getSettings() {
   const rows = db.prepare('SELECT key, value FROM site_settings').all();
   const out = { ...DEFAULT_SETTINGS };
@@ -420,4 +526,4 @@ function getSettings() {
   return out;
 }
 
-module.exports = { db, hashPassword, verifyPassword, getSettings, DEFAULT_SETTINGS };
+module.exports = { db, hashPassword, verifyPassword, getSettings, DEFAULT_SETTINGS, demoCounts, addDemoData, clearDemoData };
