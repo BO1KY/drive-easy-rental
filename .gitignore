@@ -3,4 +3,12 @@ carrental.db
 carrental.db-wal
 carrental.db-shm
 .env
+.env.*
 .DS_Store
+*.bak
+*.backup
+*.sql
+*.log
+*.pem
+*.key
+*~

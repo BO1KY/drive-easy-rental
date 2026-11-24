@@ -1029,7 +1029,7 @@ async function loadInvoices() {
     $('#invoiceSearch').addEventListener('input', () => { clearTimeout(invoiceTimer); invoiceTimer = setTimeout(loadInvoices, 250); });
 
     $$('#invoicesTable [data-iview]').forEach(b => b.addEventListener('click', () => openDoc('invoice', +b.dataset.iview)));
-    $$('#invoicesTable [data-ipay]').forEach(b => b.addEventListener('click', () => payInvoice(+b.dataset.ipay)));
+    $$('#invoicesTable [data-ipay]').forEach(b => b.addEventListener('click', () => openPayInvoice(+b.dataset.ipay)));
     $$('#invoicesTable [data-idel]').forEach(b => b.addEventListener('click', async () => {
       if (!confirm('Delete this invoice?')) return;
       try {
@@ -1059,22 +1059,139 @@ $('#exportInvoicesBtn').addEventListener('click', () => {
   toast(`Exported ${rows.length} invoice(s).`);
 });
 
-async function payInvoice(id) {
-  const method = prompt('Payment method (Cash, Card, Bank transfer, Mobile money):', 'Bank transfer');
-  if (!method) return;
-  const reference = prompt('Payment reference (optional):', '') || '';
+const payBackdrop = $('#payModalBackdrop');
+let payInvoiceId = null;
+let payLines = [];
+
+function renderPayLines() {
+  const box = $('#payInvoiceLines');
+  if (!box) return;
+  box.innerHTML = payLines.map((p, idx) => `
+    <div class="booking-item" data-index="${idx}">
+      <div class="grid-2">
+        <div class="field"><label>Method ${idx + 1}</label>
+          <select class="pay_method">
+            ${PAYMENT_METHODS.map(m => `<option ${m === p.method ? 'selected' : ''}>${m}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label>Amount (NAD) *</label><input type="number" class="pay_amount" min="0" step="0.01" value="${p.amount || ''}"></div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>Reference</label><input class="pay_reference" value="${esc(p.reference || '')}" placeholder="Receipt / transaction no."></div>
+        ${p.method === 'Cash' ? `<div class="field"><label>Cash received</label><input type="number" class="pay_tendered" min="0" step="0.01" value="${p.tendered || ''}"></div>` : ''}
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" data-pay-remove="${idx}" ${payLines.length === 1 ? 'disabled' : ''}>Remove payment</button>
+    </div>`).join('');
+
+  $$('#payInvoiceLines .pay_method').forEach(sel => sel.addEventListener('change', () => {
+    const p = payLines[Number(sel.closest('.booking-item').dataset.index)];
+    p.method = sel.value;
+    if (p.method === 'Cash') p.tendered = p.tendered || p.amount || 0;
+    renderPayLines();
+    renderPayTotals();
+  }));
+  $$('#payInvoiceLines .pay_amount').forEach(input => input.addEventListener('input', () => {
+    const p = payLines[Number(input.closest('.booking-item').dataset.index)];
+    p.amount = Number(input.value) || 0;
+    if (p.method === 'Cash') p.tendered = p.tendered || p.amount;
+    renderPayTotals();
+  }));
+  $$('#payInvoiceLines .pay_reference').forEach(input => input.addEventListener('input', () => {
+    payLines[Number(input.closest('.booking-item').dataset.index)].reference = input.value;
+  }));
+  $$('#payInvoiceLines .pay_tendered').forEach(input => input.addEventListener('input', () => {
+    payLines[Number(input.closest('.booking-item').dataset.index)].tendered = Number(input.value) || 0;
+    renderPayTotals();
+  }));
+  $$('#payInvoiceLines [data-pay-remove]').forEach(btn => btn.addEventListener('click', () => {
+    if (payLines.length === 1) return;
+    payLines.splice(Number(btn.dataset.payRemove), 1);
+    renderPayLines();
+    renderPayTotals();
+  }));
+}
+
+function renderPayTotals() {
+  const box = $('#payInvoiceTotals');
+  const invoice = invoicesCache.find(i => i.id === payInvoiceId);
+  if (!box || !invoice) return;
+  let paid = 0, cash = 0, change = 0;
+  payLines.forEach(p => {
+    paid += Number(p.amount) || 0;
+    if (p.method === 'Cash') {
+      cash += Number(p.tendered) || 0;
+      change += Math.max(0, (Number(p.tendered) || 0) - (Number(p.amount) || 0));
+    }
+  });
+  box.innerHTML = `
+    <div><span>Subtotal (excl. VAT)</span><span>${money(invoice.subtotal)}</span></div>
+    <div><span>VAT (${vatRate}%)</span><span>${money(invoice.vat)}</span></div>
+    <div><span>Amount due</span><span>${money(invoice.total_amount)}</span></div>
+    <div><span>Paid</span><span>${money(paid)}</span></div>
+    ${paid + 0.01 < invoice.total_amount
+      ? `<div class="total" style="color:var(--danger)"><span>Outstanding</span><span>${money(Math.max(0, invoice.total_amount - paid))}</span></div>`
+      : `<div class="total"><span>Change / overpayment</span><span>${money(paid - invoice.total_amount)}</span></div>`}
+    ${cash ? `<div><span>Cash received</span><span>${money(cash)}</span></div><div><span>Cash change</span><span>${money(change)}</span></div>` : ''}`;
+}
+
+function openPayInvoice(id) {
+  const invoice = invoicesCache.find(i => i.id === +id);
+  if (!invoice) return toast('Invoice not found.', 'error');
+  payInvoiceId = +id;
+  payLines = [{ method: 'Cash', amount: Number(invoice.total_amount), reference: '', tendered: Number(invoice.total_amount) }];
+  $('#payWantsTax').checked = false;
+  $('#payTaxFields').hidden = true;
+  $('#payCompany').value = '';
+  $('#payTaxNo').value = '';
+  $('#payInvoiceSummary').innerHTML = `
+    <div><strong>${esc(invoice.invoice_no)}</strong> · ${esc(invoice.booking_code || 'WALK-IN')}</div>
+    <div class="muted small">${esc(invoice.customer_name)} · ${esc(invoice.customer_email || '')} · ${esc(invoice.customer_phone || '')}</div>
+    <div class="muted small">${esc(invoice.car_label)} · ${esc(invoice.pickup_date)} → ${esc(invoice.return_date)}</div>
+    <div class="total"><span>Amount due</span><span>${money(invoice.total_amount)}</span></div>`;
+  renderPayLines();
+  renderPayTotals();
+  payBackdrop.hidden = false;
+}
+
+$('#payModalClose').addEventListener('click', () => { payBackdrop.hidden = true; });
+payBackdrop.addEventListener('click', e => { if (e.target === payBackdrop) payBackdrop.hidden = true; });
+$('#payAddPayment').addEventListener('click', () => {
+  payLines.push({ method: 'Card', amount: 0, reference: '', tendered: null });
+  renderPayLines();
+  renderPayTotals();
+});
+$('#payWantsTax').addEventListener('change', () => { $('#payTaxFields').hidden = !$('#payWantsTax').checked; });
+$('#payConfirmBtn').addEventListener('click', async () => {
+  const invoice = invoicesCache.find(i => i.id === payInvoiceId);
+  if (!invoice) return;
+  const paid = payLines.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  if (paid + 0.01 < invoice.total_amount) return toast('Payments do not cover the invoice.', 'error');
+  const badCash = payLines.find(p => p.method === 'Cash' && (Number(p.tendered) || 0) < Number(p.amount));
+  if (badCash) return toast('Cash received must cover each cash payment.', 'error');
   try {
-    await api(`/api/admin/invoices/${id}/pay`, {
+    const out = await api(`/api/admin/invoices/${payInvoiceId}/pay`, {
       method: 'PATCH',
-      body: { payment_method: method.trim(), payment_reference: reference.trim() }
+      body: {
+        payments: payLines.map(p => ({
+          method: p.method, amount: Number(p.amount), reference: p.reference,
+          tendered: p.method === 'Cash' ? Number(p.tendered) : undefined
+        })),
+        client: {
+          wants_tax_invoice: $('#payWantsTax').checked,
+          company: $('#payCompany').value,
+          tax_number: $('#payTaxNo').value
+        }
+      }
     });
-    toast('Invoice marked as paid.');
+    payBackdrop.hidden = true;
+    toast('Payment processed — invoice paid.');
     await loadInvoices();
     loadBookings();
     loadStats();
-    if (!docBackdrop.hidden) openDoc('invoice', id);
+    openDoc('invoice', out.id);
+    setTimeout(() => window.print(), 200);
   } catch (err) { toast(err.message, 'error'); }
-}
+});
 
 // ---------- Printable quotation / invoice ----------
 const docBackdrop = $('#docModalBackdrop');

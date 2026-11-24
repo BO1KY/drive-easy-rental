@@ -207,10 +207,15 @@ function hashPassword(password) {
 }
 
 function verifyPassword(password, stored) {
-  if (!stored || !stored.includes(':')) return false;
-  const [salt, hash] = stored.split(':');
-  const test = crypto.scryptSync(password, salt, 64);
-  return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), test);
+  try {
+    if (!stored || typeof stored !== 'string' || !stored.includes(':')) return false;
+    const [salt, hash] = stored.split(':');
+    if (!/^[0-9a-f]{32}$/i.test(salt) || !/^[0-9a-f]{128}$/i.test(hash)) return false;
+    const test = crypto.scryptSync(String(password), salt, 64);
+    return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), test);
+  } catch {
+    return false;
+  }
 }
 
 // ---------- seed cars ----------
@@ -397,12 +402,15 @@ db.transaction(() => {
 // ---------- seed default admin ----------
 const adminCount = db.prepare('SELECT COUNT(*) AS n FROM admins').get().n;
 if (adminCount === 0) {
-  db.prepare('INSERT INTO admins (username, password_hash) VALUES (?, ?)').run('admin', hashPassword('admin123'));
+  const password = process.env.ADMIN_PASSWORD || 'admin123';
+  db.prepare('INSERT INTO admins (username, password_hash) VALUES (?, ?)').run('admin', hashPassword(password));
+  if (!process.env.ADMIN_PASSWORD) console.warn('WARNING: using default admin password — set ADMIN_PASSWORD before deployment.');
 }
 if (db.prepare('SELECT COUNT(*) AS n FROM staff_accounts').get().n === 0) {
   const insertStaff = db.prepare('INSERT INTO staff_accounts (full_name, email, username, password_hash, role) VALUES (?,?,?,?,?)');
-  insertStaff.run('Tomas Shivute', 'tomas@driveeasy.example', 'tomas', hashPassword('password123'), 'staff');
-  insertStaff.run('Ndapewa Amutenya', 'ndapewa@driveeasy.example', 'ndapewa', hashPassword('password123'), 'manager');
+  const staffPassword = process.env.STAFF_PASSWORD || 'password123';
+  insertStaff.run('Tomas Shivute', 'tomas@driveeasy.example', 'tomas', hashPassword(staffPassword), 'staff');
+  insertStaff.run('Ndapewa Amutenya', 'ndapewa@driveeasy.example', 'ndapewa', hashPassword(staffPassword), 'manager');
 }
 
 function getSettings() {

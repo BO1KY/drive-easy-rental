@@ -107,20 +107,43 @@ management, message management, review moderation, `GET/PUT /api/admin/settings`
 `POST /api/admin/change-password`, quote CRUD/convert, invoice CRUD/pay (including walk-in invoices),
 `POST /api/admin/bookings/:id/approve` (POS), and staff-account management.
 
-Permissions are declared in `ROLE_PERMISSIONS` in `server.js` and checked per route with `requirePerm()`.
+Permissions are declared in `ROLE_DEFAULT_PERMISSIONS` / `PERMISSION_CATALOG` in `server.js`,
+stored per staff account, and enforced on every admin route with `requirePerm()`.
 
 ## Customization
 
 | Setting | Where |
 | --- | --- |
 | Currency, VAT, add-on prices, site copy | Admin → Site Settings (stored in `site_settings`) |
-| Port / session secret | env vars `PORT`, `SESSION_SECRET` |
-| Default credentials | seeded in `db.js` via `hashPassword()` — change before deploying |
+| Port / session secret | env vars `PORT`, `SESSION_SECRET` (required in production) |
+| Seeded passwords | env vars `ADMIN_PASSWORD`, `STAFF_PASSWORD`; otherwise dev defaults are used |
 
-## Security Notes
+## Security Notes & Pre-Launch Checklist
 
-- Passwords hashed with Node `crypto.scrypt` (salted, timing-safe compare)
-- Backend source and database files are blocked from static serving
-- Session cookie is `httpOnly`; admin endpoints are protected server-side by role permissions
-- POS approval is transactional: only pending bookings can be approved and the invoice is paid in the same operation
-- Set a strong `SESSION_SECRET` and change the default admin password before deploying
+Implemented hardening:
+
+- Passwords hashed with salted Node `crypto.scrypt`, timing-safe verification, malformed-hash handling
+- `SESSION_SECRET` is mandatory when `NODE_ENV=production` / `RENDER=true`; app exits if missing
+- Session cookie: `httpOnly`, `SameSite=Strict`, `Secure` in production, regenerated on every login, destroyed on logout
+- In-memory rate limits on auth, writes and booking lookup; JSON body limited to 50kb
+- Security headers: `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`, CSP, HSTS behind HTTPS
+- Backend source, dotfiles, `.env*`, database/WAL/SHM and common backup files are blocked from static serving
+- Generic 404/500 responses — no stack traces, SQL errors or file paths are returned to clients
+- Booking lookup returns only non-sensitive trip fields (no email, phone, licence, notes or customer name)
+- All SQL uses parameterised statements; admin routes enforce exact per-staff permissions server-side
+- Overlap/quantity checks and POS approvals run inside SQLite transactions
+- All user text is length-limited; image URLs are restricted to `http(s)` or relative paths; pricing/VAT/status are always calculated server-side
+
+Before going live:
+
+1. Set `SESSION_SECRET` (long random value), `ADMIN_PASSWORD`, `STAFF_PASSWORD`, and `NODE_ENV=production`.
+2. Terminate TLS at Render/your reverse proxy; confirm `Secure` cookies and HSTS in browser devtools.
+3. Change seeded demo passwords and restrict admin sign-in to authorised staff only.
+4. Confirm `carrental.db*`, `.env`, `server.js`, `db.js`, `package.json` return 404 over HTTP.
+5. Manual exploit checks: unauthenticated `/api/admin/stats` → 401; customer token on admin API → 401;
+   staff without `view_revenue` on stats → 403; XSS payload in name/notes renders as text;
+   idor attempt on `/api/my-bookings/:id/cancel` for another user → 403; rapid failed logins → 429.
+6. Keep the database file outside any public directory, back it up privately, and apply OS-level file permissions.
+
+> The CSP currently permits inline scripts because several pages embed small controllers. For an even stricter
+> posture, move those scripts into external `.js` files and replace `'unsafe-inline'` with a nonce.

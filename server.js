@@ -8,28 +8,86 @@ const { db, hashPassword, verifyPassword, getSettings, DEFAULT_SETTINGS } = requ
 const app = express();
 const PORT = process.env.PORT || 3000;
 const STATIC_DIR = __dirname;
+const isProd = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
+const SESSION_SECRET = process.env.SESSION_SECRET;
 
-app.use(express.json({ limit: '1mb' }));
+if (isProd && !SESSION_SECRET) {
+  console.error('FATAL: SESSION_SECRET must be set in production.');
+  process.exit(1);
+}
+if (!SESSION_SECRET) {
+  console.warn('WARNING: SESSION_SECRET is not set — using a development-only secret.');
+}
+if (isProd) app.set('trust proxy', 1);
+
+app.use(express.json({ limit: '50kb' }));
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'driveeasy-dev-secret-change-in-production',
+  secret: SESSION_SECRET || 'dev-only-insecure-secret-do-not-deploy',
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 1000 * 60 * 60 * 12, httpOnly: true, sameSite: 'lax' }
+  name: 'driveeasy.sid',
+  cookie: {
+    maxAge: 1000 * 60 * 60 * 12,
+    httpOnly: true,
+    sameSite: 'strict',
+    secure: isProd
+  }
 }));
 
+// ---------- security response headers ----------
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
+    "img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; " +
+    "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'");
+  if (isProd && req.secure) {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  next();
+});
+
+// ---------- lightweight in-memory rate limiting ----------
+const rateBuckets = new Map();
+function rateLimit(prefix, max, windowMs) {
+  return (req, res, next) => {
+    const key = `${prefix}:${req.ip || req.socket.remoteAddress || 'unknown'}`;
+    const now = Date.now();
+    let bucket = rateBuckets.get(key);
+    if (!bucket || now >= bucket.reset) {
+      bucket = { count: 0, reset: now + windowMs };
+      rateBuckets.set(key, bucket);
+    }
+    bucket.count += 1;
+    if (bucket.count > max) {
+      res.setHeader('Retry-After', String(Math.ceil((bucket.reset - now) / 1000)));
+      return res.status(429).json({ error: 'Too many requests. Please try again shortly.' });
+    }
+    next();
+  };
+}
+const authLimiter = rateLimit('auth', 20, 5 * 60 * 1000);
+const writeLimiter = rateLimit('write', 100, 5 * 60 * 1000);
+const lookupLimiter = rateLimit('lookup', 60, 5 * 60 * 1000);
+
 // ---------- block direct HTTP access to backend/internal files ----------
-const BLOCKED_PATHS = new Set(['/server.js', '/db.js', '/package.json', '/package-lock.json', '/readme.md']);
+const BLOCKED_PATHS = new Set([
+  '/server.js', '/db.js', '/package.json', '/package-lock.json', '/readme.md', '/render.yaml'
+]);
+const BLOCKED_EXT = /\.(db|db-wal|db-shm|bak|backup|sql|zip|gz|tar|log|env|pem|key)$/i;
 app.use((req, res, next) => {
   const p = req.path.toLowerCase();
   if (
     BLOCKED_PATHS.has(p) ||
     p.startsWith('/node_modules') ||
     p.startsWith('/.') ||
-    p.endsWith('.db') ||
-    p.endsWith('.db-wal') ||
-    p.endsWith('.db-shm')
+    BLOCKED_EXT.test(p) ||
+    p.endsWith('~')
   ) {
-    return res.status(404).send('Not found');
+    return res.status(404).json({ error: 'Not found' });
   }
   next();
 });
@@ -66,6 +124,14 @@ const isEmail = (s) => typeof s === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.tes
 const daysBetween = (a, b) => Math.max(1, Math.ceil((new Date(b) - new Date(a)) / 86400000));
 const round2 = (n) => Math.round(n * 100) / 100;
 const clean = (row) => (row ? { ...row } : null);
+const LIMITS = { name: 120, email: 254, phone: 40, short: 80, text: 2000, url: 500 };
+const text = (value, max = LIMITS.text) => String(value == null ? '' : value).trim().slice(0, max);
+const validPhone = (value) => /^[+0-9()\-\s]{5,40}$/.test(String(value || '').trim());
+function safeImageUrl(value) {
+  const url = text(value, LIMITS.url);
+  if (!url) return '';
+  return /^(https?:\/\/|\/)/i.test(url) ? url : '';
+}
 
 function getAddonsConfig(settings) {
   return {
@@ -256,7 +322,7 @@ app.get('/api/cars/:id/reviews', (req, res) => {
   res.json({ ...clean(summary), reviews });
 });
 
-app.post('/api/cars/:id/reviews', requireCustomer, (req, res) => {
+app.post('/api/cars/:id/reviews', writeLimiter, requireCustomer, (req, res) => {
   const car = db.prepare('SELECT id, brand, name FROM cars WHERE id = ?').get(req.params.id);
   if (!car) return bad(res, 'Car not found.', 404);
   const { rating, title, comment } = req.body || {};
@@ -284,13 +350,15 @@ app.post('/api/cars/:id/reviews', requireCustomer, (req, res) => {
   res.status(existing ? 200 : 201).json({ review: clean(review), summary: clean(summary) });
 });
 
-app.post('/api/bookings', (req, res) => {
+app.post('/api/bookings', writeLimiter, (req, res) => {
   const b = req.body || {};
   const required = ['car_id', 'customer_name', 'customer_email', 'customer_phone', 'pickup_date', 'return_date'];
   for (const f of required) {
     if (!b[f] || String(b[f]).trim() === '') return bad(res, `Missing required field: ${f}`);
   }
-  if (!isEmail(b.customer_email)) return bad(res, 'Invalid email address.');
+  if (!isEmail(b.customer_email) || text(b.customer_email, LIMITS.email).length > LIMITS.email) return bad(res, 'Invalid email address.');
+  if (!validPhone(b.customer_phone)) return bad(res, 'Invalid phone number.');
+  if (text(b.customer_name, LIMITS.name).length < 2) return bad(res, 'Invalid customer name.');
   if (!isDate(b.pickup_date) || !isDate(b.return_date)) return bad(res, 'Invalid dates. Use YYYY-MM-DD.');
   if (b.return_date <= b.pickup_date) return bad(res, 'Return date must be after the pickup date.');
 
@@ -318,10 +386,10 @@ app.post('/api/bookings', (req, res) => {
        pickup_location, pickup_date, return_date, total_days, add_ons, subtotal, vat, total_amount, status, notes)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',?)`).run(
       bookingCode(), car.id, customerId,
-      String(b.customer_name).trim(), String(b.customer_email).trim().toLowerCase(), String(b.customer_phone).trim(),
-      String(b.license_ref || '').trim(), String(b.pickup_location || 'Main Office').trim(),
+      text(b.customer_name, LIMITS.name), text(b.customer_email, LIMITS.email).toLowerCase(), text(b.customer_phone, LIMITS.phone),
+      text(b.license_ref || '', LIMITS.short), text(b.pickup_location || 'Main Office', LIMITS.short),
       b.pickup_date, b.return_date, q.days, JSON.stringify(addOns),
-      q.subtotal, q.vat, q.total, String(b.notes || '').trim()
+      q.subtotal, q.vat, q.total, text(b.notes || '')
     );
     return { id: Number(info.lastInsertRowid), ...q };
   });
@@ -339,13 +407,15 @@ app.post('/api/bookings', (req, res) => {
   }
 });
 
-app.post('/api/bookings/multiple', (req, res) => {
+app.post('/api/bookings/multiple', writeLimiter, (req, res) => {
   const b = req.body || {};
   const required = ['customer_name', 'customer_email', 'customer_phone', 'pickup_date', 'return_date'];
   for (const f of required) {
     if (!b[f] || String(b[f]).trim() === '') return bad(res, `Missing required field: ${f}`);
   }
-  if (!isEmail(b.customer_email)) return bad(res, 'Invalid email address.');
+  if (!isEmail(b.customer_email) || text(b.customer_email, LIMITS.email).length > LIMITS.email) return bad(res, 'Invalid email address.');
+  if (!validPhone(b.customer_phone)) return bad(res, 'Invalid phone number.');
+  if (text(b.customer_name, LIMITS.name).length < 2) return bad(res, 'Invalid customer name.');
   if (!isDate(b.pickup_date) || !isDate(b.return_date)) return bad(res, 'Invalid dates.');
   if (b.pickup_date < new Date().toISOString().slice(0, 10)) return bad(res, 'Pickup date cannot be in the past.');
   if (b.return_date <= b.pickup_date) return bad(res, 'Return date must be after pickup date.');
@@ -374,11 +444,11 @@ app.post('/api/bookings/multiple', (req, res) => {
           (booking_code, car_id, customer_id, customer_name, customer_email, customer_phone, license_ref,
            pickup_location, pickup_date, return_date, total_days, add_ons, subtotal, vat, total_amount, status, notes)
           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',?)`).run(
-          bookingCode(), car.id, customerId, String(b.customer_name).trim(),
-          String(b.customer_email).trim().toLowerCase(), String(b.customer_phone).trim(),
-          String(b.license_ref || '').trim(), String(b.pickup_location || 'Main Office').trim(),
+          bookingCode(), car.id, customerId, text(b.customer_name, LIMITS.name),
+          text(b.customer_email, LIMITS.email).toLowerCase(), text(b.customer_phone, LIMITS.phone),
+          text(b.license_ref || '', LIMITS.short), text(b.pickup_location || 'Main Office', LIMITS.short),
           b.pickup_date, b.return_date, q.days, JSON.stringify(addOns),
-          q.subtotal, q.vat, q.total, String(b.notes || '').trim()
+          q.subtotal, q.vat, q.total, text(b.notes || '')
         );
         created.push(db.prepare(`SELECT b.*, c.name AS car_name, c.brand AS car_brand
           FROM bookings b JOIN cars c ON c.id = b.car_id WHERE b.id = ?`).get(Number(info.lastInsertRowid)));
@@ -391,74 +461,92 @@ app.post('/api/bookings/multiple', (req, res) => {
   }
 });
 
-app.get('/api/bookings/lookup/:code', (req, res) => {
-  const row = db.prepare(`SELECT b.*, c.name AS car_name, c.brand AS car_brand, c.category, c.image_url
-    FROM bookings b JOIN cars c ON c.id = b.car_id WHERE b.booking_code = ?`).get(String(req.params.code).trim().toUpperCase());
+app.get('/api/bookings/lookup/:code', lookupLimiter, (req, res) => {
+  const row = db.prepare(`SELECT b.booking_code, b.car_id, b.pickup_date, b.return_date, b.total_days,
+      b.add_ons, b.subtotal, b.vat, b.total_amount, b.status, b.pickup_location,
+      c.name AS car_name, c.brand AS car_brand, c.category, c.image_url
+    FROM bookings b JOIN cars c ON c.id = b.car_id WHERE b.booking_code = ?`)
+    .get(text(req.params.code, 20).toUpperCase());
   if (!row) return bad(res, 'Booking not found.', 404);
   res.json(clean(row));
 });
 
 // ================= PUBLIC CONTACT MESSAGES =================
-app.post('/api/contact', (req, res) => {
+app.post('/api/contact', writeLimiter, (req, res) => {
   const { name, email, phone, subject, message } = req.body || {};
-  if (!name || String(name).trim().length < 2) return bad(res, 'Please enter your name.');
-  if (!isEmail(email)) return bad(res, 'Please enter a valid email address.');
-  if (!subject || String(subject).trim().length < 2) return bad(res, 'Please enter a subject.');
-  if (!message || String(message).trim().length < 10) return bad(res, 'Message must be at least 10 characters.');
+  if (!name || text(name, LIMITS.name).length < 2) return bad(res, 'Please enter your name.');
+  if (!isEmail(email) || text(email, LIMITS.email).length > LIMITS.email) return bad(res, 'Please enter a valid email address.');
+  if (phone && !validPhone(phone)) return bad(res, 'Please enter a valid phone number.');
+  if (!subject || text(subject, LIMITS.short).length < 2) return bad(res, 'Please enter a subject.');
+  if (!message || text(message).length < 10) return bad(res, 'Message must be at least 10 characters.');
 
   const info = db.prepare(`INSERT INTO contact_messages (name, email, phone, subject, message)
     VALUES (?,?,?,?,?)`).run(
-    String(name).trim(),
-    String(email).trim().toLowerCase(),
-    String(phone || '').trim(),
-    String(subject).trim(),
-    String(message).trim()
+    text(name, LIMITS.name),
+    text(email, LIMITS.email).toLowerCase(),
+    text(phone || '', LIMITS.phone),
+    text(subject, LIMITS.short),
+    text(message)
   );
   res.status(201).json({ id: Number(info.lastInsertRowid), ok: true });
 });
 
 // ================= CUSTOMER AUTH & PORTAL =================
-app.post('/api/auth/register', (req, res) => {
+app.post('/api/auth/register', authLimiter, (req, res) => {
   const { full_name, email, phone, license_ref, address, password } = req.body || {};
-  if (!full_name || String(full_name).trim().length < 2) return bad(res, 'Full name is required.');
-  if (!isEmail(email)) return bad(res, 'Valid email address is required.');
-  if (!phone || String(phone).trim().length < 5) return bad(res, 'Phone number is required.');
-  if (!password || String(password).length < 6) return bad(res, 'Password must be at least 6 characters.');
+  if (text(full_name, LIMITS.name).length < 2) return bad(res, 'Full name is required.');
+  if (!isEmail(email) || text(email, LIMITS.email).length > LIMITS.email) return bad(res, 'Valid email address is required.');
+  if (!validPhone(phone)) return bad(res, 'Valid phone number is required.');
+  if (!password || String(password).length < 6 || String(password).length > 200) {
+    return bad(res, 'Password must be between 6 and 200 characters.');
+  }
 
-  const normalizedEmail = String(email).trim().toLowerCase();
+  const normalizedEmail = text(email, LIMITS.email).toLowerCase();
   const exists = db.prepare('SELECT id FROM customers WHERE email = ?').get(normalizedEmail);
   if (exists) return bad(res, 'An account with this email already exists.', 409);
 
   const info = db.prepare(`INSERT INTO customers (full_name, email, phone, license_ref, address, password_hash)
     VALUES (?,?,?,?,?,?)`).run(
-    String(full_name).trim(),
+    text(full_name, LIMITS.name),
     normalizedEmail,
-    String(phone).trim(),
-    String(license_ref || '').trim(),
-    String(address || '').trim(),
+    text(phone, LIMITS.phone),
+    text(license_ref || '', LIMITS.short),
+    text(address || '', LIMITS.short),
     hashPassword(String(password))
   );
   const customerId = Number(info.lastInsertRowid);
-  req.session.customerId = customerId;
-  const cust = db.prepare('SELECT id, full_name, email, phone, license_ref, address, status, created_at FROM customers WHERE id = ?').get(customerId);
-  res.status(201).json({ customer: clean(cust) });
+  req.session.regenerate(err => {
+    if (err) return res.status(500).json({ error: 'Could not start session.' });
+    req.session.customerId = customerId;
+    const cust = db.prepare('SELECT id, full_name, email, phone, license_ref, address, status, created_at FROM customers WHERE id = ?').get(customerId);
+    res.status(201).json({ customer: clean(cust) });
+  });
 });
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', authLimiter, (req, res) => {
   const { email, password } = req.body || {};
-  const cust = db.prepare('SELECT * FROM customers WHERE email = ?').get(String(email || '').trim().toLowerCase());
+  if (!isEmail(email) || text(email, LIMITS.email).length > LIMITS.email || String(password || '').length > 200) {
+    return bad(res, 'Invalid email or password.', 401);
+  }
+  const cust = db.prepare('SELECT * FROM customers WHERE email = ?').get(text(email, LIMITS.email).toLowerCase());
   if (!cust || !verifyPassword(String(password || ''), cust.password_hash)) {
     return bad(res, 'Invalid email or password.', 401);
   }
   if (cust.status !== 'active') return bad(res, 'Your account has been suspended. Please contact support.', 403);
-  req.session.customerId = cust.id;
-  const { password_hash, ...safe } = cust;
-  res.json({ customer: safe });
+  req.session.regenerate(err => {
+    if (err) return res.status(500).json({ error: 'Could not start session.' });
+    req.session.customerId = cust.id;
+    const { password_hash, ...safe } = cust;
+    res.json({ customer: safe });
+  });
 });
 
 app.post('/api/auth/logout', (req, res) => {
-  if (req.session) delete req.session.customerId;
-  res.json({ ok: true });
+  req.session.destroy(err => {
+    if (err) return res.status(500).json({ error: 'Could not sign out.' });
+    res.clearCookie('driveeasy.sid');
+    res.json({ ok: true });
+  });
 });
 
 app.get('/api/auth/me', requireCustomer, (req, res) => {
@@ -474,10 +562,12 @@ app.get('/api/auth/me', requireCustomer, (req, res) => {
 
 app.put('/api/auth/profile', requireCustomer, (req, res) => {
   const { full_name, phone, license_ref, address, current_password, new_password } = req.body || {};
-  if (!full_name || String(full_name).trim().length < 2) return bad(res, 'Full name is required.');
-  if (!phone || String(phone).trim().length < 5) return bad(res, 'Phone number is required.');
+  if (text(full_name, LIMITS.name).length < 2) return bad(res, 'Full name is required.');
+  if (!validPhone(phone)) return bad(res, 'Phone number is required.');
   if (new_password) {
-    if (String(new_password).length < 6) return bad(res, 'New password must be at least 6 characters.');
+    if (String(new_password).length < 6 || String(new_password).length > 200) {
+      return bad(res, 'New password must be between 6 and 200 characters.');
+    }
     if (current_password !== undefined) {
       const custRow = db.prepare('SELECT password_hash FROM customers WHERE id = ?').get(req.customer.id);
       if (!custRow || !verifyPassword(String(current_password), custRow.password_hash)) {
@@ -487,10 +577,10 @@ app.put('/api/auth/profile', requireCustomer, (req, res) => {
   }
 
   db.prepare(`UPDATE customers SET full_name = ?, phone = ?, license_ref = ?, address = ? WHERE id = ?`).run(
-    String(full_name).trim(),
-    String(phone).trim(),
-    String(license_ref || '').trim(),
-    String(address || '').trim(),
+    text(full_name, LIMITS.name),
+    text(phone, LIMITS.phone),
+    text(license_ref || '', LIMITS.short),
+    text(address || '', LIMITS.short),
     req.customer.id
   );
   if (new_password) {
@@ -512,33 +602,41 @@ app.patch('/api/my-bookings/:id/cancel', requireCustomer, (req, res) => {
 });
 
 // ================= ADMIN AUTH =================
-app.post('/api/admin/login', (req, res) => {
+function completeAdminLogin(req, res, fields, payload) {
+  req.session.regenerate(err => {
+    if (err) return res.status(500).json({ error: 'Could not start session.' });
+    Object.assign(req.session, fields);
+    res.json(payload);
+  });
+}
+
+app.post('/api/admin/login', authLimiter, (req, res) => {
   const { username, password } = req.body || {};
   const ident = String(username || '').trim().toLowerCase();
   const pass = String(password || '');
   const admin = db.prepare('SELECT * FROM admins WHERE lower(username) = ?').get(ident);
   if (admin && verifyPassword(pass, admin.password_hash)) {
-    req.session.adminId = admin.id;
-    req.session.adminUsername = admin.username;
-    return res.json({ username: admin.username, name: 'Administrator', role: 'admin', permissions: ROLE_DEFAULT_PERMISSIONS.admin });
+    return completeAdminLogin(req, res,
+      { adminId: admin.id, adminUsername: admin.username },
+      { username: admin.username, name: 'Administrator', role: 'admin', permissions: ROLE_DEFAULT_PERMISSIONS.admin });
   }
   const staff = db.prepare('SELECT * FROM staff_accounts WHERE lower(email) = ? OR lower(username) = ?').get(ident, ident);
   if (staff && staff.status === 'active' && verifyPassword(pass, staff.password_hash)) {
-    req.session.staffId = staff.id;
     const stored = parsePermissions(staff.permissions);
-    return res.json({ username: staff.username, name: staff.full_name, role: staff.role,
-      permissions: stored.length ? stored : ROLE_DEFAULT_PERMISSIONS[staff.role] });
+    return completeAdminLogin(req, res,
+      { staffId: staff.id },
+      { username: staff.username, name: staff.full_name, role: staff.role,
+        permissions: stored.length ? stored : ROLE_DEFAULT_PERMISSIONS[staff.role] });
   }
   return bad(res, 'Invalid username or password.', 401);
 });
 
 app.post('/api/admin/logout', (req, res) => {
-  if (req.session) {
-    delete req.session.adminId;
-    delete req.session.adminUsername;
-    delete req.session.staffId;
-  }
-  res.json({ ok: true });
+  req.session.destroy(err => {
+    if (err) return res.status(500).json({ error: 'Could not sign out.' });
+    res.clearCookie('driveeasy.sid');
+    res.json({ ok: true });
+  });
 });
 
 app.get('/api/admin/me', requireAdmin, (req, res) => {
@@ -766,9 +864,19 @@ function validateCar(b, partial = false) {
   if (!partial || b.brand !== undefined) { if (!b.brand || String(b.brand).trim().length < 2) errs.push('Brand is required.'); }
   if (!partial || b.category !== undefined) { if (!CATEGORIES.includes(b.category)) errs.push('Invalid category.'); }
   if (!partial || b.year !== undefined) { const y = +b.year; if (!Number.isInteger(y) || y < 1990 || y > new Date().getFullYear() + 1) errs.push('Invalid year.'); }
-  if (!partial || b.daily_rate !== undefined) { const r = +b.daily_rate; if (isNaN(r) || r < 0) errs.push('Daily rate must be a non-negative number.'); }
+  if (!partial || b.daily_rate !== undefined) {
+    const r = +b.daily_rate;
+    if (!Number.isFinite(r) || r < 0 || r > 1000000) errs.push('Daily rate must be between 0 and 1,000,000.');
+  }
   if (!partial || b.transmission !== undefined) { if (!['Automatic', 'Manual'].includes(b.transmission)) errs.push('Invalid transmission.'); }
-  if (!partial || b.fuel_type !== undefined) { if (!b.fuel_type || String(b.fuel_type).trim() === '') errs.push('Fuel type is required.'); }
+  if (!partial || b.fuel_type !== undefined) {
+    if (text(b.fuel_type, LIMITS.short).length < 1) errs.push('Fuel type is required.');
+  }
+  if (text(b.name || '', LIMITS.name).length > LIMITS.name) errs.push('Name is too long.');
+  if (text(b.brand || '', LIMITS.name).length > LIMITS.name) errs.push('Brand is too long.');
+  if (b.image_url !== undefined && b.image_url && !safeImageUrl(b.image_url)) {
+    errs.push('Image URL must be an http(s) link or a relative path.');
+  }
   if (!partial || b.seats !== undefined) { const s = +b.seats; if (!Number.isInteger(s) || s < 1 || s > 60) errs.push('Invalid seats.'); }
   if (b.doors !== undefined) { const d = +b.doors; if (!Number.isInteger(d) || d < 1 || d > 10) errs.push('Invalid doors.'); }
   if (b.status !== undefined && !CAR_STATUSES.includes(b.status)) errs.push('Invalid status.');
@@ -785,9 +893,9 @@ app.post('/api/admin/cars', requirePerm('cars:write'), (req, res) => {
   if (errs.length) return bad(res, errs.join(' '));
   const info = db.prepare(`INSERT INTO cars (name, brand, category, year, daily_rate, transmission, fuel_type, seats, doors, image_url, description, features, status, featured, quantity)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
-    String(b.name).trim(), String(b.brand).trim(), b.category, +b.year, +b.daily_rate, b.transmission,
-    String(b.fuel_type).trim(), +b.seats, +(b.doors || 4), String(b.image_url || '').trim(),
-    String(b.description || '').trim(), String(b.features || '').trim(),
+    text(b.name, LIMITS.name), text(b.brand, LIMITS.name), b.category, +b.year, +b.daily_rate, b.transmission,
+    text(b.fuel_type, LIMITS.short), +b.seats, +(b.doors || 4), safeImageUrl(b.image_url),
+    text(b.description || ''), text(b.features || ''),
     CAR_STATUSES.includes(b.status) ? b.status : 'available', b.featured ? 1 : 0,
     Math.max(1, +b.quantity || 1)
   );
@@ -801,9 +909,9 @@ app.put('/api/admin/cars/:id', requirePerm('cars:write'), (req, res) => {
   const errs = validateCar(b);
   if (errs.length) return bad(res, errs.join(' '));
   db.prepare(`UPDATE cars SET name=?, brand=?, category=?, year=?, daily_rate=?, transmission=?, fuel_type=?, seats=?, doors=?, image_url=?, description=?, features=?, status=?, featured=?, quantity=? WHERE id=?`).run(
-    String(b.name).trim(), String(b.brand).trim(), b.category, +b.year, +b.daily_rate, b.transmission,
-    String(b.fuel_type).trim(), +b.seats, +b.doors, String(b.image_url || '').trim(),
-    String(b.description || '').trim(), String(b.features || '').trim(),
+    text(b.name, LIMITS.name), text(b.brand, LIMITS.name), b.category, +b.year, +b.daily_rate, b.transmission,
+    text(b.fuel_type, LIMITS.short), +b.seats, +b.doors, safeImageUrl(b.image_url),
+    text(b.description || ''), text(b.features || ''),
     CAR_STATUSES.includes(b.status) ? b.status : car.status, b.featured ? 1 : 0,
     Math.max(1, +b.quantity || 1), car.id
   );
@@ -911,12 +1019,12 @@ app.get('/api/admin/quotes', requirePerm('quotes:write'), (req, res) => {
   res.json(rows.map(r => ({ ...clean(r), add_ons: JSON.parse(r.add_ons || '{}') })));
 });
 
-app.post('/api/admin/quotes', requireAdmin, (req, res) => {
+app.post('/api/admin/quotes', requirePerm('quotes:write'), (req, res) => {
   const b = req.body || {};
   const car = db.prepare('SELECT * FROM cars WHERE id = ?').get(b.car_id);
   if (!car) return bad(res, 'Car not found.', 404);
-  if (!b.customer_name || String(b.customer_name).trim().length < 2) return bad(res, 'Please enter the customer name.');
-  if (!isEmail(b.customer_email)) return bad(res, 'Please enter a valid customer email.');
+  if (text(b.customer_name, LIMITS.name).length < 2) return bad(res, 'Please enter the customer name.');
+  if (!isEmail(b.customer_email) || text(b.customer_email, LIMITS.email).length > LIMITS.email) return bad(res, 'Please enter a valid customer email.');
   if (!isDate(b.pickup_date) || !isDate(b.return_date)) return bad(res, 'Invalid dates. Use YYYY-MM-DD.');
   if (b.return_date <= b.pickup_date) return bad(res, 'Return date must be after the pickup date.');
   const settings = getSettings();
@@ -928,9 +1036,9 @@ app.post('/api/admin/quotes', requireAdmin, (req, res) => {
     (quote_no, customer_name, customer_email, customer_phone, car_id, pickup_date, return_date, total_days,
      add_ons, subtotal, vat, total_amount, valid_until, notes, status, created_by)
     VALUES ('',?,?,?,?,?,?,?,?,?,?,?,?,?,'open',?)`).run(
-    String(b.customer_name).trim(), String(b.customer_email).trim(), String(b.customer_phone || '').trim(),
+    text(b.customer_name, LIMITS.name), text(b.customer_email, LIMITS.email), text(b.customer_phone || '', LIMITS.phone),
     car.id, b.pickup_date, b.return_date, q.days, JSON.stringify(addOns), q.subtotal, q.vat, q.total,
-    validUntil, String(b.notes || '').trim(), 'admin'
+    validUntil, text(b.notes || ''), (sessionActor(req) || {}).name || 'admin'
   );
   const id = Number(info.lastInsertRowid);
   db.prepare('UPDATE quotes SET quote_no = ? WHERE id = ?').run(`Q-${new Date().getFullYear()}-${String(id).padStart(4, '0')}`, id);
@@ -989,11 +1097,13 @@ app.post('/api/admin/invoices', requirePerm('invoices:write'), (req, res) => {
     }
     return res.status(201).json(clean(makeInvoiceForBooking(booking)));
   }
-  if (!b.customer_name || String(b.customer_name).trim().length < 2) return bad(res, 'Please enter the client name.');
-  const description = String(b.description || b.car_label || '').trim();
+  if (text(b.customer_name, LIMITS.name).length < 2) return bad(res, 'Please enter the client name.');
+  if (b.customer_email && !isEmail(b.customer_email)) return bad(res, 'Please enter a valid email address.');
+  if (b.customer_phone && !validPhone(b.customer_phone)) return bad(res, 'Please enter a valid phone number.');
+  const description = text(b.description || b.car_label || '', LIMITS.short);
   if (!description) return bad(res, 'Please enter the item or service description.');
   const amount = Number(b.total_amount);
-  if (!Number.isFinite(amount) || amount < 0) return bad(res, 'Please enter a valid amount.');
+  if (!Number.isFinite(amount) || amount < 0 || amount > 1000000) return bad(res, 'Please enter a valid amount.');
   const vatRate = Math.max(0, Number(getSettings().vat_rate) || 0) / 100;
   const total = round2(amount);
   const subtotal = round2(total / (1 + vatRate));
@@ -1004,8 +1114,8 @@ app.post('/api/admin/invoices', requirePerm('invoices:write'), (req, res) => {
      pickup_date, return_date, total_days, subtotal, vat, total_amount, status, payment_method, payment_reference,
      paid_at, due_date, notes, created_by)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
-    '', null, 'WALK-IN', String(b.customer_name).trim(), String(b.customer_email || '').trim().toLowerCase(),
-    String(b.customer_phone || '').trim(), description,
+    '', null, 'WALK-IN', text(b.customer_name, LIMITS.name), text(b.customer_email || '', LIMITS.email).toLowerCase(),
+    text(b.customer_phone || '', LIMITS.phone), description,
     isDate(b.pickup_date) ? b.pickup_date : today,
     isDate(b.return_date) ? b.return_date : today,
     Math.max(1, Number(b.total_days) || 1), subtotal, vat, total,
@@ -1018,15 +1128,49 @@ app.post('/api/admin/invoices', requirePerm('invoices:write'), (req, res) => {
   res.status(201).json(clean(db.prepare('SELECT * FROM invoices WHERE id = ?').get(id)));
 });
 
-app.patch('/api/admin/invoices/:id/pay', requireAdmin, (req, res) => {
+app.patch('/api/admin/invoices/:id/pay', requirePerm('invoices:write'), (req, res) => {
   const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
   if (!invoice) return bad(res, 'Invoice not found.', 404);
   if (invoice.status === 'paid') return bad(res, 'This invoice has already been paid.', 409);
-  const method = String((req.body || {}).payment_method || '').trim();
-  if (!method) return bad(res, 'Please select a payment method.');
-  const reference = String((req.body || {}).payment_reference || '').trim();
-  db.prepare("UPDATE invoices SET status = 'paid', payment_method = ?, payment_reference = ?, paid_at = datetime('now') WHERE id = ?")
-    .run(method, reference, invoice.id);
+  const body = req.body || {};
+  const payments = Array.isArray(body.payments) ? body.payments : [];
+  let method = '', reference = '', cashTendered = null, cashChange = 0, storedPayments = [];
+  if (payments.length) {
+    let paid = 0;
+    for (const p of payments) {
+      const m = text(p.method, LIMITS.short);
+      const amount = Number(p.amount);
+      if (!m) return bad(res, 'Select a payment method.');
+      if (!Number.isFinite(amount) || amount <= 0) return bad(res, 'Each payment needs a valid amount.');
+      let tendered = null, change = 0;
+      if (m.toLowerCase() === 'cash') {
+        tendered = Number(p.tendered);
+        if (!Number.isFinite(tendered) || tendered < amount) return bad(res, 'Cash received must cover the cash portion.');
+        change = round2(tendered - amount);
+        cashTendered = round2((cashTendered || 0) + tendered);
+        cashChange = round2(cashChange + change);
+      }
+      paid = round2(paid + amount);
+      storedPayments.push({ method: m, amount: round2(amount), reference: text(p.reference, LIMITS.short), tendered, change });
+    }
+    if (paid + 0.01 < invoice.total_amount) return bad(res, `Payments are short by ${round2(invoice.total_amount - paid)}.`);
+    method = storedPayments.map(p => p.method).join(' + ');
+    reference = storedPayments.map(p => p.reference).filter(Boolean).join(' · ');
+  } else {
+    method = text(body.payment_method, LIMITS.short);
+    if (!method) return bad(res, 'Please select a payment method.');
+    reference = text(body.payment_reference, LIMITS.short);
+  }
+  const client = body.client || {};
+  const company = text(client.company, LIMITS.short);
+  const taxNo = text(client.tax_number, LIMITS.short);
+  const wantsTax = !!client.wants_tax_invoice;
+  db.prepare(`UPDATE invoices SET status='paid', payment_method=?, payment_reference=?, paid_at=datetime('now'),
+    payments=?, amount_tendered=?, change_amount=?, client_company=CASE WHEN ? <> '' THEN ? ELSE client_company END,
+    client_tax_no=CASE WHEN ? <> '' THEN ? ELSE client_tax_no END, wants_tax_invoice=? WHERE id=?`).run(
+    method, reference, JSON.stringify(storedPayments), cashTendered, cashChange,
+    company, company, taxNo, taxNo, wantsTax ? 1 : (client.wants_tax_invoice ? 1 : 0), invoice.id
+  );
   res.json(clean(db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoice.id)));
 });
 
@@ -1036,10 +1180,12 @@ app.delete('/api/admin/invoices/:id', requirePerm('invoices:delete'), (req, res)
   res.json({ ok: true });
 });
 
-app.post('/api/admin/pos/sale', requirePerm('invoices:write'), (req, res) => {
+app.post('/api/admin/pos/sale', writeLimiter, requirePerm('invoices:write'), (req, res) => {
   const b = req.body || {};
   const client = b.client || {};
-  if (!client.name || String(client.name).trim().length < 2) return bad(res, 'Please enter the client name.');
+  if (text(client.name, LIMITS.name).length < 2) return bad(res, 'Please enter the client name.');
+  if (client.email && !isEmail(client.email)) return bad(res, 'Please enter a valid email address.');
+  if (client.phone && !validPhone(client.phone)) return bad(res, 'Please enter a valid phone number.');
   const items = Array.isArray(b.items) ? b.items : [];
   if (!items.length) return bad(res, 'Choose at least one vehicle.');
   if (!isDate(b.pickup_date) || !isDate(b.return_date) || b.return_date <= b.pickup_date) {
@@ -1100,10 +1246,10 @@ app.post('/api/admin/pos/sale', requirePerm('invoices:write'), (req, res) => {
           (booking_code, car_id, customer_id, customer_name, customer_email, customer_phone, license_ref,
            pickup_location, pickup_date, return_date, total_days, add_ons, subtotal, vat, total_amount, status, notes)
           VALUES (?,?,NULL,?,?,?,?,?,?,?,?,?,?,?,?,'confirmed',?)`).run(
-          bookingCode(), p.car.id, String(client.name).trim(), String(client.email || '').trim().toLowerCase(),
-          String(client.phone || '').trim(), String(client.license || '').trim(), 'Main Office',
+          bookingCode(), p.car.id, text(client.name, LIMITS.name), text(client.email || '', LIMITS.email).toLowerCase(),
+          text(client.phone || '', LIMITS.phone), text(client.license || '', LIMITS.short), 'Main Office',
           b.pickup_date, b.return_date, p.quote.days, JSON.stringify(p.addOns),
-          p.quote.subtotal, p.quote.vat, p.quote.total, String(b.notes || '').trim()
+          p.quote.subtotal, p.quote.vat, p.quote.total, text(b.notes || '')
         );
         bookings.push(db.prepare(`SELECT b.*, c.name AS car_name, c.brand AS car_brand
           FROM bookings b JOIN cars c ON c.id = b.car_id WHERE b.id = ?`).get(Number(info.lastInsertRowid)));
@@ -1116,8 +1262,8 @@ app.post('/api/admin/pos/sale', requirePerm('invoices:write'), (req, res) => {
          paid_at, due_date, notes, created_by, amount_tendered, change_amount, client_company, client_tax_no,
          wants_tax_invoice, payments)
         VALUES ('',NULL,?,?,?,?,?,?,?,?,?,?,?,'paid',?,?,datetime('now'),?,?,?,?,?,?,?,?,?)`).run(
-        'POS-' + Date.now().toString(36).toUpperCase(), String(client.name).trim(),
-        String(client.email || '').trim().toLowerCase(), String(client.phone || '').trim(), label,
+        'POS-' + Date.now().toString(36).toUpperCase(), text(client.name, LIMITS.name),
+        text(client.email || '', LIMITS.email).toLowerCase(), text(client.phone || '', LIMITS.phone), label,
         b.pickup_date, b.return_date, Math.max(...priced.map(p => p.quote.days)),
         subtotal, vat, total, cleanPayments.map(p => p.method).join(' + '),
         cleanPayments.map(p => p.reference).filter(Boolean).join(' · '),
@@ -1235,7 +1381,7 @@ app.patch('/api/admin/messages/:id', requirePerm('messages:write'), (req, res) =
   if (!msg) return bad(res, 'Message not found.', 404);
   const { status, admin_notes } = req.body || {};
   const nextStatus = status && MESSAGE_STATUSES.includes(status) ? status : msg.status;
-  const nextNotes = admin_notes !== undefined ? String(admin_notes).trim() : msg.admin_notes;
+  const nextNotes = admin_notes !== undefined ? text(admin_notes) : msg.admin_notes;
   db.prepare('UPDATE contact_messages SET status = ?, admin_notes = ? WHERE id = ?').run(nextStatus, nextNotes, msg.id);
   res.json(clean(db.prepare('SELECT * FROM contact_messages WHERE id = ?').get(msg.id)));
 });
@@ -1257,18 +1403,50 @@ app.put('/api/admin/settings', requirePerm('settings:write'), (req, res) => {
   const upsert = db.prepare(`INSERT INTO site_settings (key, value, updated_at)
     VALUES (?, ?, datetime('now'))
     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`);
-  db.transaction(() => {
-    for (const key of Object.keys(DEFAULT_SETTINGS)) {
-      if (body[key] !== undefined) {
-        upsert.run(key, String(body[key]).trim());
+  const numericSettings = new Set(['vat_rate', 'addon_child_seat', 'addon_additional_driver', 'addon_insurance', 'min_driver_age']);
+  try {
+    db.transaction(() => {
+      for (const key of Object.keys(DEFAULT_SETTINGS)) {
+        if (body[key] === undefined) continue;
+        const max = key === 'currency_symbol' ? 4 : (numericSettings.has(key) ? 10 : LIMITS.short);
+        const value = text(body[key], max).replace(/[\r\n]+/g, ' ');
+        if (numericSettings.has(key) && !/^\d+(\.\d+)?$/.test(value)) {
+          const err = new Error(`Invalid value for ${key}.`);
+          err.status = 400;
+          throw err;
+        }
+        upsert.run(key, value);
       }
-    }
-  })();
-  res.json(getSettings());
+    })();
+    res.json(getSettings());
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Could not save settings.' });
+  }
+});
+
+// ---------- 404 + generic error handlers (no stack traces leaked) ----------
+app.use((req, res) => {
+  if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found.' });
+  res.status(404).send('Not found');
+});
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  if (err && err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Request body too large.' });
+  }
+  if (err && (err.type === 'entity.parse.failed' || err instanceof SyntaxError)) {
+    return res.status(400).json({ error: 'Invalid JSON.' });
+  }
+  if (err && err.status && err.status >= 400 && err.status < 500) {
+    return res.status(err.status).json({ error: err.message || 'Bad request.' });
+  }
+  console.error('Unhandled error:', err && err.message);
+  if (req.path.startsWith('/api/')) return res.status(500).json({ error: 'Internal server error.' });
+  res.status(500).send('Internal server error.');
 });
 
 // ---------- start ----------
 app.listen(PORT, () => {
   console.log(`DriveEasy Rentals website running at http://localhost:${PORT}`);
-  console.log(`Admin Control Center: http://localhost:${PORT}/admin.html  (admin / admin123)`);
+  if (!isProd) console.log('Admin sign-in: http://localhost:' + PORT + '/admin-login.html');
 });
