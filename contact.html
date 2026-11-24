@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contact Us — DriveEasy Rentals</title>
+<meta name="description" content="Contact DriveEasy Rentals for reservations, corporate fleet quotes, airport pickups, or 24/7 roadside support.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="index.html">
+      <img src="logo.jpg" alt="DriveEasy Rentals Logo" class="brand-logo">
+      <span data-brand>DriveEasy<span class="brand-accent">Rentals</span></span>
+    </a>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+    <nav class="main-nav" id="mainNav">
+      <a href="index.html">Home</a>
+      <a href="book.html">Book Now</a>
+      <a href="about.html">About Us</a>
+      <a href="contact.html" class="active">Contact Us</a>
+      <a href="register.html" id="navRegisterLink" class="nav-cta">Register / Sign In</a>
+      <a href="admin.html" class="nav-admin">Admin</a>
+    </nav>
+  </div>
+</header>
+
+<main class="page-main">
+  <section class="page-banner">
+    <div class="container">
+      <h1>Contact Us</h1>
+      <p>Have a question about a vehicle, airport pickup, corporate rates, or an existing booking? Send us a message directly.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container two-col">
+      <div class="card">
+        <h2>Get in Touch</h2>
+        <p class="muted">Our customer desk responds promptly during operating hours, with 24/7 support for active rentals.</p>
+        <div class="info-list">
+          <div class="info-item">
+            <strong>Phone</strong>
+            <span data-setting="contact_phone">+264 81 555 0100</span>
+          </div>
+          <div class="info-item">
+            <strong>Email</strong>
+            <span data-setting="contact_email">hello@driveeasy.com</span>
+          </div>
+          <div class="info-item">
+            <strong>Head Office</strong>
+            <span data-setting="contact_address">42 Independence Ave, Windhoek</span>
+          </div>
+          <div class="info-item">
+            <strong>Opening Hours</strong>
+            <span data-setting="contact_hours">Mon–Sat: 07:00 – 19:00 · Sun: 09:00 – 16:00</span>
+          </div>
+          <div class="info-item">
+            <strong>Pickup Branches</strong>
+            <span data-setting="pickup_locations">Main Office, Hosea Kutako Airport, City Center Branch</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Send Us a Message</h2>
+        <p class="muted" style="margin-bottom:1rem">Your inquiry is stored in our system and routed straight to the Admin desk.</p>
+        <form id="contactForm" novalidate>
+          <div class="grid-2">
+            <div class="field">
+              <label for="c_name">Your Name *</label>
+              <input id="c_name" required placeholder="Jane Doe">
+            </div>
+            <div class="field">
+              <label for="c_email">Email *</label>
+              <input id="c_email" type="email" required placeholder="jane@example.com">
+            </div>
+          </div>
+          <div class="grid-2">
+            <div class="field">
+              <label for="c_phone">Phone</label>
+              <input id="c_phone" placeholder="+264 81 000 0000">
+            </div>
+            <div class="field">
+              <label for="c_subject">Subject *</label>
+              <input id="c_subject" required placeholder="Airport pickup / Long-term rental">
+            </div>
+          </div>
+          <div class="field">
+            <label for="c_message">Message *</label>
+            <textarea id="c_message" rows="5" required placeholder="Tell us how we can help…"></textarea>
+          </div>
+          <button type="submit" class="btn btn-accent btn-lg btn-block" id="contactSubmitBtn">Send Message</button>
+        </form>
+        <div id="contactSuccess" class="lookup-card" style="margin-top:1rem;border-left:4px solid var(--success)" hidden>
+          <strong>Message Received!</strong>
+          <p class="muted small" id="contactSuccessText"></p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <h3 data-brand>DriveEasy<span class="brand-accent">Rentals</span></h3>
+        <p data-setting="footer_note">Transparent rates, modern vehicles &amp; 24/7 roadside assistance.</p>
+      </div>
+      <div>
+        <h3>Pages</h3>
+        <ul class="footer-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="book.html">Book Now</a></li>
+          <li><a href="about.html">About Us</a></li>
+          <li><a href="contact.html">Contact Us</a></li>
+          <li><a href="register.html">Register / My Account</a></li>
+          <li><a href="admin.html">Admin Control Center</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Contact</h3>
+        <ul class="footer-links">
+          <li data-setting="contact_address">42 Independence Ave, Windhoek</li>
+          <li data-setting="contact_phone">+264 81 555 0100</li>
+          <li data-setting="contact_email">hello@driveeasy.com</li>
+          <li data-setting="contact_hours">Mon–Sat: 07:00 – 19:00 · Sun: 09:00 – 16:00</li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 <span data-setting="site_name">DriveEasy</span> <span data-setting="site_accent">Rentals</span>.</span>
+      <span><a href="book.html" style="color:#fff">Book Online →</a></span>
+    </div>
+  </div>
+</footer>
+
+<div class="toast-container" id="toastContainer"></div>
+<script src="main.js"></script>
+<script>
+(() => {
+  const { $, toast, loadSite } = window.DriveEasy;
+
+  loadSite().then(site => {
+    if (site.customer) {
+      $('#c_name').value = site.customer.full_name || '';
+      $('#c_email').value = site.customer.email || '';
+      $('#c_phone').value = site.customer.phone || '';
+    }
+  });
+
+  $('#contactForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = $('#contactSubmitBtn');
+    const payload = {
+      name: $('#c_name').value.trim(),
+      email: $('#c_email').value.trim(),
+      phone: $('#c_phone').value.trim(),
+      subject: $('#c_subject').value.trim(),
+      message: $('#c_message').value.trim()
+    };
+    if (payload.name.length < 2 || !payload.email.includes('@') || payload.subject.length < 2 || payload.message.length < 10) {
+      return toast('Please fill in your name, email, subject, and a message (at least 10 characters).', 'error');
+    }
+    btn.disabled = true; btn.textContent = 'Sending…';
+    try {
+      const res = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not send message.');
+      toast('Message sent! We will get back to you shortly.');
+      $('#contactSuccessText').textContent = `Reference #MSG-${data.id}. Thank you, ${payload.name} — our team has received your inquiry.`;
+      $('#contactSuccess').hidden = false;
+      $('#c_subject').value = '';
+      $('#c_message').value = '';
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Send Message';
+    }
+  });
+})();
+</script>
+</body>
+</html>

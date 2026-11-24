@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Book Now — DriveEasy Rentals</title>
+<meta name="description" content="Browse our full vehicle fleet, check real-time date availability, and book your rental car online.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="index.html">
+      <img src="logo.jpg" alt="DriveEasy Rentals Logo" class="brand-logo">
+      <span data-brand>DriveEasy<span class="brand-accent">Rentals</span></span>
+    </a>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+    <nav class="main-nav" id="mainNav">
+      <a href="index.html">Home</a>
+      <a href="book.html" class="active">Book Now</a>
+      <a href="about.html">About Us</a>
+      <a href="contact.html">Contact Us</a>
+      <a href="register.html" id="navRegisterLink" class="nav-cta">Register / Sign In</a>
+      <a href="admin.html" class="nav-admin">Admin</a>
+    </nav>
+  </div>
+</header>
+
+<main class="page-main">
+  <section class="page-banner">
+    <div class="container">
+      <h1>Book Your Rental Car</h1>
+      <p style="margin-bottom:1.3rem">Choose your pickup &amp; return dates to see real-time availability and instant VAT-inclusive pricing.</p>
+      <form class="search-bar" id="searchBar">
+        <div class="field">
+          <label for="pickupDate">Pickup date</label>
+          <input type="date" id="pickupDate" required>
+        </div>
+        <div class="field">
+          <label for="returnDate">Return date</label>
+          <input type="date" id="returnDate" required>
+        </div>
+        <button type="submit" class="btn btn-accent btn-lg">Check Availability</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="container main-layout" id="fleet">
+    <aside class="filters" id="filtersPanel">
+      <div class="filters-head">
+        <h2>Filter Fleet</h2>
+        <button class="btn btn-ghost btn-sm" id="clearFilters" type="button">Clear all</button>
+      </div>
+      <div class="field">
+        <label for="searchInput">Search make / model</label>
+        <input type="search" id="searchInput" placeholder="e.g. Toyota, SUV…">
+      </div>
+      <div class="field">
+        <label for="categoryFilter">Category</label>
+        <select id="categoryFilter">
+          <option value="">All categories</option>
+          <option>Sedan</option><option>SUV</option><option>Hatchback</option>
+          <option>Van/Truck</option><option>Luxury</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="transmissionFilter">Transmission</label>
+        <select id="transmissionFilter">
+          <option value="">Any</option>
+          <option>Automatic</option><option>Manual</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="seatsFilter">Minimum seats</label>
+        <select id="seatsFilter">
+          <option value="">Any</option>
+          <option value="4">4+</option><option value="5">5+</option>
+          <option value="7">7+</option><option value="8">8+</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Max daily rate: <strong id="priceLabel">$200</strong></label>
+        <input type="range" id="priceFilter" min="20" max="200" step="5" value="200">
+      </div>
+    </aside>
+
+    <section class="fleet">
+      <div class="fleet-head">
+        <h2>Available Fleet <span class="count-badge" id="carCount">0 cars</span></h2>
+        <p class="muted" id="fleetHint">Select dates above to check real-time availability.</p>
+      </div>
+      <div class="car-grid" id="carGrid">
+        <div class="empty-state"><p>Loading vehicles…</p></div>
+      </div>
+    </section>
+  </section>
+
+  <section class="section section-surface" id="booking-lookup">
+    <div class="container">
+      <h2>Find My Booking</h2>
+      <p class="muted">Enter your booking confirmation code (e.g. CR-7F3K2A) to check status and trip details.</p>
+      <form class="lookup-form" id="lookupForm">
+        <input type="text" id="lookupCode" placeholder="CR-XXXXXX" maxlength="12" required>
+        <button class="btn" type="submit">Find Booking</button>
+      </form>
+      <div id="lookupResult" class="lookup-result"></div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <h3 data-brand>DriveEasy<span class="brand-accent">Rentals</span></h3>
+        <p data-setting="footer_note">Transparent rates, modern vehicles &amp; 24/7 roadside assistance.</p>
+      </div>
+      <div>
+        <h3>Pages</h3>
+        <ul class="footer-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="book.html">Book Now</a></li>
+          <li><a href="about.html">About Us</a></li>
+          <li><a href="contact.html">Contact Us</a></li>
+          <li><a href="register.html">Register / My Account</a></li>
+          <li><a href="admin.html">Admin Control Center</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Contact</h3>
+        <ul class="footer-links">
+          <li data-setting="contact_address">42 Independence Ave, Windhoek</li>
+          <li data-setting="contact_phone">+264 81 555 0100</li>
+          <li data-setting="contact_email">hello@driveeasy.com</li>
+          <li data-setting="contact_hours">Mon–Sat: 07:00 – 19:00 · Sun: 09:00 – 16:00</li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 <span data-setting="site_name">DriveEasy</span> <span data-setting="site_accent">Rentals</span>.</span>
+      <span>Instant Online Reservations</span>
+    </div>
+  </div>
+</footer>
+
+<div class="modal-backdrop" id="modalBackdrop" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <button class="modal-close" id="modalClose" aria-label="Close">×</button>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+<script src="main.js"></script>
+</body>
+</html>

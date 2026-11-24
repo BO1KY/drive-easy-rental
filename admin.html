@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Control Center — DriveEasy Rentals</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="admin-body">
+
+<!-- Login view -->
+<div class="admin-login" id="loginView">
+  <form class="login-card" id="loginForm">
+    <img src="logo.jpg" alt="DriveEasy Rentals Logo" class="brand-logo" style="width:56px;height:56px;margin:0 auto .8rem">
+    <h1>DriveEasy <span class="brand-accent">Admin</span></h1>
+    <p class="muted">Sign in to control fleet, bookings, customers, messages &amp; website content.</p>
+    <div class="field"><label for="loginUser">Username</label><input id="loginUser" required autocomplete="username"></div>
+    <div class="field"><label for="loginPass">Password</label><input id="loginPass" type="password" required autocomplete="current-password"></div>
+    <button class="btn btn-accent btn-lg btn-block" type="submit">Sign In</button>
+    <p class="muted small">Default credentials: <code>admin</code> / <code>admin123</code></p>
+    <a href="index.html" class="muted small">← Back to Website</a>
+  </form>
+</div>
+
+<!-- App shell -->
+<div class="admin-shell" id="appView" hidden>
+  <aside class="admin-sidebar">
+    <div class="brand"><img src="logo.jpg" alt="DriveEasy Rentals Logo" class="brand-logo"><span>DriveEasy<span class="brand-accent">Admin</span></span></div>
+    <nav class="admin-nav">
+      <button class="active" data-section="dashboard">Dashboard</button>
+      <button data-section="cars">Fleet / Cars</button>
+      <button data-section="bookings">Bookings <span class="nav-pill" id="pendingPill" hidden>0</span></button>
+      <button data-section="customers">Customers</button>
+      <button data-section="messages">Messages <span class="nav-pill" id="messagesPill" hidden>0</span></button>
+      <button data-section="settings">Site Settings</button>
+    </nav>
+    <div class="sidebar-foot">
+      <span id="adminUser" class="muted small"></span>
+      <a href="index.html" class="btn btn-ghost btn-sm" style="text-align:center">View Website ↗</a>
+      <button class="btn btn-ghost btn-sm" id="logoutBtn" type="button">Log out</button>
+    </div>
+  </aside>
+
+  <main class="admin-main">
+    <!-- Dashboard -->
+    <section class="admin-section" id="section-dashboard">
+      <div class="section-head">
+        <h1>Dashboard</h1>
+        <button class="btn btn-ghost btn-sm" id="refreshAllBtn" type="button">Refresh Data</button>
+      </div>
+      <div class="stat-cards" id="statCards"></div>
+      <div class="two-col">
+        <div class="card">
+          <h2 style="font-size:1.1rem;margin-bottom:.8rem">Recent Bookings</h2>
+          <div id="recentBookingsBox"><p class="muted small">Loading…</p></div>
+        </div>
+        <div class="card">
+          <h2 style="font-size:1.1rem;margin-bottom:.8rem">Recent Contact Inquiries</h2>
+          <div id="recentMessagesBox"><p class="muted small">Loading…</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Cars -->
+    <section class="admin-section" id="section-cars" hidden>
+      <div class="section-head">
+        <h1>Fleet Management</h1>
+        <button class="btn btn-accent" id="addCarBtn" type="button">+ Add Car</button>
+      </div>
+      <div class="table-wrap"><table class="admin-table" id="carsTable"></table></div>
+    </section>
+
+    <!-- Bookings -->
+    <section class="admin-section" id="section-bookings" hidden>
+      <div class="section-head">
+        <h1>Bookings</h1>
+        <div class="booking-toolbar">
+          <select id="bookingStatusFilter">
+            <option value="">All statuses</option>
+            <option value="pending">Pending</option><option value="confirmed">Confirmed</option>
+            <option value="active">Active</option><option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+          <input type="search" id="bookingSearch" placeholder="Search code / name / email">
+        </div>
+      </div>
+      <div class="table-wrap"><table class="admin-table" id="bookingsTable"></table></div>
+    </section>
+
+    <!-- Customers -->
+    <section class="admin-section" id="section-customers" hidden>
+      <div class="section-head">
+        <h1>Registered Customers</h1>
+        <div class="booking-toolbar">
+          <input type="search" id="customerSearch" placeholder="Search name / email / phone">
+        </div>
+      </div>
+      <div class="table-wrap"><table class="admin-table" id="customersTable"></table></div>
+    </section>
+
+    <!-- Messages -->
+    <section class="admin-section" id="section-messages" hidden>
+      <div class="section-head">
+        <h1>Contact Messages</h1>
+        <div class="booking-toolbar">
+          <select id="messageStatusFilter">
+            <option value="">All statuses</option>
+            <option value="new">New</option>
+            <option value="read">Read</option>
+            <option value="replied">Replied</option>
+            <option value="archived">Archived</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-wrap"><table class="admin-table" id="messagesTable"></table></div>
+    </section>
+
+    <!-- Site Settings (Control Everything) -->
+    <section class="admin-section" id="section-settings" hidden>
+      <div class="section-head">
+        <h1>Site Content &amp; Settings</h1>
+        <button class="btn btn-accent" id="saveSettingsBtn" type="button">Save All Settings</button>
+      </div>
+
+      <form id="settingsForm" class="settings-grid">
+        <div class="settings-card">
+          <h2>Brand &amp; Landing Hero</h2>
+          <div class="grid-2">
+            <div class="field"><label>Brand Name</label><input id="s_site_name"></div>
+            <div class="field"><label>Brand Accent</label><input id="s_site_accent"></div>
+          </div>
+          <div class="field"><label>Tagline</label><input id="s_tagline"></div>
+          <div class="field"><label>Hero Headline</label><input id="s_hero_title"></div>
+          <div class="field"><label>Hero Subtitle</label><textarea id="s_hero_subtitle" rows="2"></textarea></div>
+          <div class="field"><label>Footer Note</label><textarea id="s_footer_note" rows="2"></textarea></div>
+        </div>
+
+        <div class="settings-card">
+          <h2>About Us Page &amp; Stats</h2>
+          <div class="field"><label>About Headline</label><input id="s_about_headline"></div>
+          <div class="field"><label>Company Story</label><textarea id="s_about_story" rows="3"></textarea></div>
+          <div class="field"><label>Mission Statement</label><textarea id="s_about_mission" rows="2"></textarea></div>
+          <div class="grid-2">
+            <div class="field"><label>Years Stat</label><input id="s_stat_years"></div>
+            <div class="field"><label>Clients Stat</label><input id="s_stat_clients"></div>
+          </div>
+          <div class="field"><label>Rating Stat</label><input id="s_stat_rating"></div>
+        </div>
+
+        <div class="settings-card">
+          <h2>Contact Info &amp; Branches</h2>
+          <div class="field"><label>Phone</label><input id="s_contact_phone"></div>
+          <div class="field"><label>Email</label><input id="s_contact_email"></div>
+          <div class="field"><label>Head Office Address</label><input id="s_contact_address"></div>
+          <div class="field"><label>Opening Hours</label><input id="s_contact_hours"></div>
+          <div class="field"><label>Pickup Locations (comma-separated)</label><input id="s_pickup_locations"></div>
+        </div>
+
+        <div class="settings-card">
+          <h2>Pricing, Add-ons &amp; Rules</h2>
+          <div class="grid-2">
+            <div class="field"><label>Currency Symbol</label><input id="s_currency_symbol" maxlength="4"></div>
+            <div class="field"><label>VAT Rate (%)</label><input id="s_vat_rate" type="number" min="0" step="0.1"></div>
+          </div>
+          <div class="grid-2">
+            <div class="field"><label>Child Seat / day</label><input id="s_addon_child_seat" type="number" min="0" step="0.5"></div>
+            <div class="field"><label>Extra Driver / day</label><input id="s_addon_additional_driver" type="number" min="0" step="0.5"></div>
+          </div>
+          <div class="grid-2">
+            <div class="field"><label>Full Insurance / day</label><input id="s_addon_insurance" type="number" min="0" step="0.5"></div>
+            <div class="field"><label>Min Driver Age</label><input id="s_min_driver_age" type="number" min="18" max="30"></div>
+          </div>
+        </div>
+      </form>
+
+      <div class="settings-card" style="margin-top:1.4rem;max-width:520px">
+        <h2>Admin Password</h2>
+        <form id="adminPassForm">
+          <div class="field"><label>Current Password</label><input id="ap_current" type="password" required></div>
+          <div class="field"><label>New Password (min 6 chars)</label><input id="ap_new" type="password" minlength="6" required></div>
+          <button type="submit" class="btn btn-primary">Update Admin Password</button>
+        </form>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Car add/edit modal -->
+<div class="modal-backdrop" id="carModalBackdrop" hidden>
+  <div class="modal" role="dialog" aria-modal="true">
+    <button class="modal-close" id="carModalClose" aria-label="Close">×</button>
+    <div class="modal-body">
+      <h2 id="carFormTitle">Add Car</h2>
+      <form id="carForm">
+        <input type="hidden" id="f_id">
+        <div class="grid-2">
+          <div class="field"><label>Name / Model *</label><input id="f_name" required></div>
+          <div class="field"><label>Brand *</label><input id="f_brand" required></div>
+          <div class="field"><label>Category *</label>
+            <select id="f_category"><option>Sedan</option><option>SUV</option><option>Hatchback</option><option>Van/Truck</option><option>Luxury</option></select></div>
+          <div class="field"><label>Year *</label><input id="f_year" type="number" min="1990" required></div>
+          <div class="field"><label>Daily rate *</label><input id="f_rate" type="number" min="0" step="0.01" required></div>
+          <div class="field"><label>Transmission *</label><select id="f_transmission"><option>Automatic</option><option>Manual</option></select></div>
+          <div class="field"><label>Fuel type *</label><input id="f_fuel" placeholder="Petrol / Diesel" required></div>
+          <div class="field"><label>Seats *</label><input id="f_seats" type="number" min="1" max="60" required></div>
+          <div class="field"><label>Doors</label><input id="f_doors" type="number" min="1" max="10" value="4"></div>
+          <div class="field"><label>Status</label>
+            <select id="f_status"><option value="available">Available</option><option value="maintenance">Maintenance</option><option value="unavailable">Unavailable</option></select></div>
+        </div>
+        <div class="field"><label>Image URL</label><input id="f_image" placeholder="https://… (leave blank for placeholder)"></div>
+        <div class="field"><label>Description</label><textarea id="f_description" rows="2"></textarea></div>
+        <div class="field"><label>Features (comma-separated)</label><input id="f_features" placeholder="AC, GPS, Bluetooth"></div>
+        <label class="checkbox-row" style="margin-bottom:.9rem">
+          <input type="checkbox" id="f_featured"> Feature this vehicle on the Landing Page
+        </label>
+        <button class="btn btn-accent btn-lg btn-block" type="submit">Save Car</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Booking / Message Edit Modal -->
+<div class="modal-backdrop" id="detailModalBackdrop" hidden>
+  <div class="modal" role="dialog" aria-modal="true">
+    <button class="modal-close" id="detailModalClose" aria-label="Close">×</button>
+    <div class="modal-body" id="detailModalBody"></div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+<script src="admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Register &amp; My Account — DriveEasy Rentals</title>
+<meta name="description" content="Create a DriveEasy Rentals customer account or sign in to manage your bookings and profile.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="index.html">
+      <img src="logo.jpg" alt="DriveEasy Rentals Logo" class="brand-logo">
+      <span data-brand>DriveEasy<span class="brand-accent">Rentals</span></span>
+    </a>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+    <nav class="main-nav" id="mainNav">
+      <a href="index.html">Home</a>
+      <a href="book.html">Book Now</a>
+      <a href="about.html">About Us</a>
+      <a href="contact.html">Contact Us</a>
+      <a href="register.html" id="navRegisterLink" class="nav-cta active">Register / Sign In</a>
+      <a href="admin.html" class="nav-admin">Admin</a>
+    </nav>
+  </div>
+</header>
+
+<main class="page-main">
+  <section class="page-banner">
+    <div class="container">
+      <h1 id="accountBannerTitle">Customer Registration &amp; Account</h1>
+      <p id="accountBannerSub">Create an account for faster checkouts, saved license details, and live booking tracking.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+
+      <!-- Logged-out View: Register / Sign In -->
+      <div class="auth-wrap card" id="authBox">
+        <div class="auth-tabs">
+          <button type="button" class="active" data-tab="register">Create Account</button>
+          <button type="button" data-tab="login">Sign In</button>
+        </div>
+
+        <form id="registerForm" novalidate>
+          <div class="field">
+            <label for="r_name">Full Name *</label>
+            <input id="r_name" required placeholder="Jane Doe">
+          </div>
+          <div class="grid-2">
+            <div class="field">
+              <label for="r_email">Email *</label>
+              <input id="r_email" type="email" required placeholder="jane@example.com">
+            </div>
+            <div class="field">
+              <label for="r_phone">Phone *</label>
+              <input id="r_phone" required placeholder="+264 81 000 0000">
+            </div>
+          </div>
+          <div class="grid-2">
+            <div class="field">
+              <label for="r_license">Driver's License Ref</label>
+              <input id="r_license" placeholder="DL-12345">
+            </div>
+            <div class="field">
+              <label for="r_password">Password * (min 6 chars)</label>
+              <input id="r_password" type="password" required minlength="6" autocomplete="new-password">
+            </div>
+          </div>
+          <div class="field">
+            <label for="r_address">Street Address</label>
+            <input id="r_address" placeholder="14 Sam Nujoma Dr, Windhoek">
+          </div>
+          <button type="submit" class="btn btn-accent btn-lg btn-block" id="registerBtn">Create Account</button>
+        </form>
+
+        <form id="loginForm" hidden novalidate>
+          <div class="field">
+            <label for="l_email">Email *</label>
+            <input id="l_email" type="email" required autocomplete="email" placeholder="john@example.com">
+          </div>
+          <div class="field">
+            <label for="l_password">Password *</label>
+            <input id="l_password" type="password" required autocomplete="current-password">
+          </div>
+          <button type="submit" class="btn btn-accent btn-lg btn-block" id="loginBtn">Sign In</button>
+          <p class="muted small" style="text-align:center;margin-top:.8rem">Demo customer: <code>john@example.com</code> / <code>password123</code></p>
+        </form>
+      </div>
+
+      <!-- Logged-in Customer Portal -->
+      <div id="portalBox" hidden>
+        <div class="section-bar">
+          <div>
+            <h2>Welcome, <span id="custWelcomeName"></span></h2>
+            <p class="muted">Manage your reservations, cancel pending orders, or update your driver profile.</p>
+          </div>
+          <div style="display:flex;gap:.6rem;flex-wrap:wrap">
+            <a href="book.html" class="btn btn-accent">+ Book a Car</a>
+            <button type="button" class="btn btn-ghost" id="custLogoutBtn">Sign Out</button>
+          </div>
+        </div>
+
+        <div class="portal-grid">
+          <div class="card">
+            <h3 style="margin-bottom:1rem">My Bookings</h3>
+            <div id="myBookingsList"><p class="muted">Loading your bookings…</p></div>
+          </div>
+
+          <div class="card">
+            <h3 style="margin-bottom:1rem">My Profile</h3>
+            <form id="profileForm">
+              <div class="field"><label for="p_name">Full Name *</label><input id="p_name" required></div>
+              <div class="field"><label for="p_email">Email</label><input id="p_email" disabled></div>
+              <div class="field"><label for="p_phone">Phone *</label><input id="p_phone" required></div>
+              <div class="field"><label for="p_license">Driver's License Ref</label><input id="p_license"></div>
+              <div class="field"><label for="p_address">Address</label><input id="p_address"></div>
+              <div class="field"><label for="p_password">New Password (leave blank to keep current)</label><input id="p_password" type="password" minlength="6" autocomplete="new-password"></div>
+              <button type="submit" class="btn btn-accent btn-block">Save Profile</button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <h3 data-brand>DriveEasy<span class="brand-accent">Rentals</span></h3>
+        <p data-setting="footer_note">Transparent rates, modern vehicles &amp; 24/7 roadside assistance.</p>
+      </div>
+      <div>
+        <h3>Pages</h3>
+        <ul class="footer-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="book.html">Book Now</a></li>
+          <li><a href="about.html">About Us</a></li>
+          <li><a href="contact.html">Contact Us</a></li>
+          <li><a href="register.html">Register / My Account</a></li>
+          <li><a href="admin.html">Admin Control Center</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Contact</h3>
+        <ul class="footer-links">
+          <li data-setting="contact_address">42 Independence Ave, Windhoek</li>
+          <li data-setting="contact_phone">+264 81 555 0100</li>
+          <li data-setting="contact_email">hello@driveeasy.com</li>
+          <li data-setting="contact_hours">Mon–Sat: 07:00 – 19:00 · Sun: 09:00 – 16:00</li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 <span data-setting="site_name">DriveEasy</span> <span data-setting="site_accent">Rentals</span>.</span>
+      <span>Customer Portal</span>
+    </div>
+  </div>
+</footer>
+
+<div class="toast-container" id="toastContainer"></div>
+<script src="main.js"></script>
+<script>
+(() => {
+  const { $, $$, esc, money, toast, loadSite } = window.DriveEasy;
+
+  $$('.auth-tabs button').forEach(btn => btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    $$('.auth-tabs button').forEach(b => b.classList.toggle('active', b === btn));
+    $('#registerForm').hidden = tab !== 'register';
+    $('#loginForm').hidden = tab !== 'login';
+  }));
+
+  function showAuth() {
+    $('#authBox').hidden = false;
+    $('#portalBox').hidden = true;
+    $('#accountBannerTitle').textContent = 'Customer Registration & Account';
+    $('#accountBannerSub').textContent = 'Create an account for faster checkouts, saved license details, and live booking tracking.';
+  }
+
+  function showPortal(cust, bookings) {
+    $('#authBox').hidden = true;
+    $('#portalBox').hidden = false;
+    $('#accountBannerTitle').textContent = 'My Account & Bookings';
+    $('#accountBannerSub').textContent = `Signed in as ${cust.email}`;
+    $('#custWelcomeName').textContent = cust.full_name;
+    $('#p_name').value = cust.full_name || '';
+    $('#p_email').value = cust.email || '';
+    $('#p_phone').value = cust.phone || '';
+    $('#p_license').value = cust.license_ref || '';
+    $('#p_address').value = cust.address || '';
+    $('#p_password').value = '';
+    renderMyBookings(bookings || []);
+  }
+
+  function renderMyBookings(bookings) {
+    const box = $('#myBookingsList');
+    if (!bookings.length) {
+      box.innerHTML = '<p class="muted">You have no bookings yet. <a href="book.html">Browse our fleet</a> to reserve your first car.</p>';
+      return;
+    }
+    box.innerHTML = bookings.map(b => `
+      <div class="booking-mini">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">
+          <strong>${esc(b.car_brand)} ${esc(b.car_name)} · <code>${esc(b.booking_code)}</code></strong>
+          <span class="status-badge status-${esc(b.status)}">${esc(b.status)}</span>
+        </div>
+        <div class="muted small">${esc(b.pickup_date)} → ${esc(b.return_date)} (${b.total_days} days) · ${esc(b.pickup_location || 'Main Office')}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:.2rem">
+          <strong>Total: ${money(b.total_amount)}</strong>
+          ${b.status === 'pending' ? `<button class="btn btn-danger btn-sm" data-cancel="${b.id}" type="button">Cancel Booking</button>` : ''}
+        </div>
+      </div>`).join('');
+
+    $$('[data-cancel]').forEach(btn => btn.addEventListener('click', async () => {
+      if (!confirm('Cancel this pending booking?')) return;
+      try {
+        const res = await fetch(`/api/my-bookings/${btn.dataset.cancel}/cancel`, { method: 'PATCH' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not cancel.');
+        toast('Booking cancelled.');
+        refreshPortal();
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+    }));
+  }
+
+  async function refreshPortal() {
+    try {
+      const res = await fetch('/api/auth/me');
+      if (!res.ok) return showAuth();
+      const data = await res.json();
+      await loadSite();
+      showPortal(data.customer, data.bookings);
+    } catch {
+      showAuth();
+    }
+  }
+
+  $('#registerForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = $('#registerBtn');
+    const body = {
+      full_name: $('#r_name').value.trim(),
+      email: $('#r_email').value.trim(),
+      phone: $('#r_phone').value.trim(),
+      license_ref: $('#r_license').value.trim(),
+      address: $('#r_address').value.trim(),
+      password: $('#r_password').value
+    };
+    if (!body.full_name || !body.email.includes('@') || !body.phone || body.password.length < 6) {
+      return toast('Please enter name, valid email, phone, and a password (6+ chars).', 'error');
+    }
+    btn.disabled = true; btn.textContent = 'Creating account…';
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Registration failed.');
+      toast('Account created! Welcome, ' + data.customer.full_name);
+      await refreshPortal();
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Create Account';
+    }
+  });
+
+  $('#loginForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = $('#loginBtn');
+    btn.disabled = true; btn.textContent = 'Signing in…';
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: $('#l_email').value.trim(), password: $('#l_password').value })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Sign in failed.');
+      toast('Welcome back, ' + data.customer.full_name);
+      await refreshPortal();
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Sign In';
+    }
+  });
+
+  $('#profileForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const body = {
+      full_name: $('#p_name').value.trim(),
+      phone: $('#p_phone').value.trim(),
+      license_ref: $('#p_license').value.trim(),
+      address: $('#p_address').value.trim(),
+      new_password: $('#p_password').value || undefined
+    };
+    try {
+      const res = await fetch('/api/auth/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Update failed.');
+      toast('Profile updated.');
+      await refreshPortal();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+
+  $('#custLogoutBtn').addEventListener('click', async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    await loadSite();
+    toast('Signed out.');
+    showAuth();
+  });
+
+  loadSite().then(refreshPortal);
+})();
+</script>
+</body>
+</html>

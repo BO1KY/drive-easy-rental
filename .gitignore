@@ -1,0 +1,6 @@
+node_modules/
+carrental.db
+carrental.db-wal
+carrental.db-shm
+.env
+.DS_Store

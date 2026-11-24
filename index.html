@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DriveEasy Rentals — Find &amp; Book Your Perfect Rental Car</title>
+<meta name="description" content="DriveEasy Rentals — modern rental fleet, transparent daily rates, instant online booking, and 24/7 customer support.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="index.html">
+      <img src="logo.jpg" alt="DriveEasy Rentals Logo" class="brand-logo">
+      <span data-brand>DriveEasy<span class="brand-accent">Rentals</span></span>
+    </a>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+    <nav class="main-nav" id="mainNav">
+      <a href="index.html" class="active">Home</a>
+      <a href="book.html">Book Now</a>
+      <a href="about.html">About Us</a>
+      <a href="contact.html">Contact Us</a>
+      <a href="register.html" id="navRegisterLink" class="nav-cta">Register / Sign In</a>
+      <a href="admin.html" class="nav-admin">Admin</a>
+    </nav>
+  </div>
+</header>
+
+<main class="page-main">
+  <section class="hero">
+    <div class="container hero-grid">
+      <div>
+        <h1 data-setting="hero_title">Find &amp; book your perfect rental car</h1>
+        <p class="hero-lead" data-setting="hero_subtitle">Transparent daily rates · Instant availability · Free cancellation on pending bookings</p>
+        <div class="hero-actions">
+          <a href="book.html" class="btn btn-accent btn-lg">Book a Car Now</a>
+          <a href="register.html" class="btn btn-outline-light btn-lg">Create Free Account</a>
+        </div>
+      </div>
+
+      <div class="hero-card">
+        <h2>Quick Availability Search</h2>
+        <p class="sub">Pick your dates to browse vehicles ready for pickup.</p>
+        <form id="quickSearchForm">
+          <div class="grid-2">
+            <div class="field">
+              <label for="qsPickup">Pickup date</label>
+              <input type="date" id="qsPickup" required>
+            </div>
+            <div class="field">
+              <label for="qsReturn">Return date</label>
+              <input type="date" id="qsReturn" required>
+            </div>
+          </div>
+          <div class="field">
+            <label for="qsCategory">Vehicle category</label>
+            <select id="qsCategory">
+              <option value="">All categories</option>
+              <option>Sedan</option>
+              <option>SUV</option>
+              <option>Hatchback</option>
+              <option>Van/Truck</option>
+              <option>Luxury</option>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-accent btn-lg btn-block">Search Available Cars</button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <section class="container">
+    <div class="stats-strip">
+      <div class="strip-card"><div class="num" data-setting="stat_years">10+</div><div class="lbl">Years on the Road</div></div>
+      <div class="strip-card"><div class="num" data-setting="stat_clients">15,000+</div><div class="lbl">Happy Renters</div></div>
+      <div class="strip-card"><div class="num" data-setting="stat_rating">4.9 / 5</div><div class="lbl">Customer Rating</div></div>
+      <div class="strip-card"><div class="num">24/7</div><div class="lbl">Roadside Assistance</div></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <div class="section-bar">
+        <div>
+          <h2>Featured Fleet</h2>
+          <p class="muted">Popular, well-maintained vehicles ready for your next trip.</p>
+        </div>
+        <a href="book.html" class="btn btn-ghost">View Full Fleet →</a>
+      </div>
+      <div class="car-grid" id="featuredGrid">
+        <div class="empty-state"><p>Loading featured vehicles…</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-surface">
+    <div class="container">
+      <div class="section-head-center">
+        <h2>How Renting Works</h2>
+        <p class="muted">From browsing to keys-in-hand in three simple steps.</p>
+      </div>
+      <div class="steps">
+        <div class="step">
+          <span class="step-num">1</span>
+          <h3>Choose Your Dates &amp; Car</h3>
+          <p class="muted">Search real-time availability by category, seats, transmission, and daily budget on our Book Now page.</p>
+        </div>
+        <div class="step">
+          <span class="step-num">2</span>
+          <h3>Customize &amp; Confirm</h3>
+          <p class="muted">Select optional add-ons like full insurance or child seats, review your exact VAT-inclusive total, and get a booking code.</p>
+        </div>
+        <div class="step">
+          <span class="step-num">3</span>
+          <h3>Pick Up &amp; Drive</h3>
+          <p class="muted">Collect your sanitized vehicle at the airport or city branch, or track your reservation anytime from your account.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <div class="cta-banner">
+        <div>
+          <h2>Ready to hit the road?</h2>
+          <p>Register an account for faster checkouts and booking management, or reach out for custom fleet requests.</p>
+        </div>
+        <div style="display:flex;gap:.8rem;flex-wrap:wrap">
+          <a href="book.html" class="btn btn-accent btn-lg">Book Now</a>
+          <a href="contact.html" class="btn btn-light btn-lg">Contact Us</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <h3 data-brand>DriveEasy<span class="brand-accent">Rentals</span></h3>
+        <p data-setting="footer_note">Transparent rates, modern vehicles &amp; 24/7 roadside assistance.</p>
+        <p class="small" style="margin-top:.6rem" data-setting="tagline">Drive easy, travel far.</p>
+      </div>
+      <div>
+        <h3>Pages</h3>
+        <ul class="footer-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="book.html">Book Now</a></li>
+          <li><a href="about.html">About Us</a></li>
+          <li><a href="contact.html">Contact Us</a></li>
+          <li><a href="register.html">Register / My Account</a></li>
+          <li><a href="admin.html">Admin Control Center</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Contact</h3>
+        <ul class="footer-links">
+          <li data-setting="contact_address">42 Independence Ave, Windhoek</li>
+          <li data-setting="contact_phone">+264 81 555 0100</li>
+          <li data-setting="contact_email">hello@driveeasy.com</li>
+          <li data-setting="contact_hours">Mon–Sat: 07:00 – 19:00 · Sun: 09:00 – 16:00</li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 <span data-setting="site_name">DriveEasy</span> <span data-setting="site_accent">Rentals</span>. All rights reserved.</span>
+      <span>Full-Stack Website · Live Availability &amp; Admin CMS</span>
+    </div>
+  </div>
+</footer>
+
+<div class="toast-container" id="toastContainer"></div>
+<script src="main.js"></script>
+<script>
+(() => {
+  const { $, esc, money, toast, todayPlus, loadSite } = window.DriveEasy;
+
+  const p = $('#qsPickup'), r = $('#qsReturn');
+  p.min = todayPlus(0); p.value = todayPlus(1);
+  r.min = todayPlus(1); r.value = todayPlus(4);
+  p.addEventListener('change', () => { r.min = p.value; if (r.value <= p.value) r.value = p.value; });
+
+  $('#quickSearchForm').addEventListener('submit', e => {
+    e.preventDefault();
+    if (!p.value || !r.value || r.value <= p.value) {
+      return toast('Return date must be after pickup date.', 'error');
+    }
+    const q = new URLSearchParams({ pickup: p.value, ret: r.value });
+    const cat = $('#qsCategory').value;
+    if (cat) q.set('category', cat);
+    window.location.href = 'book.html?' + q.toString();
+  });
+
+  async function loadFeatured() {
+    const grid = $('#featuredGrid');
+    try {
+      const res = await fetch('/api/cars?featured=1');
+      let cars = await res.json();
+      if (!cars.length) {
+        const allRes = await fetch('/api/cars');
+        cars = (await allRes.json()).slice(0, 4);
+      }
+      if (!cars.length) {
+        grid.innerHTML = '<div class="empty-state"><p>No vehicles currently listed.</p></div>';
+        return;
+      }
+      grid.innerHTML = cars.map(car => `
+        <article class="car-card">
+          <div class="car-img">
+            <img src="${esc(car.image_url)}" alt="${esc(car.brand)} ${esc(car.name)}" loading="lazy">
+            <span class="badge ${car.status === 'available' ? (car.is_available ? 'available' : 'booked') : esc(car.status)}">
+              ${car.status === 'available' ? (car.is_available ? 'Available' : 'Booked') : esc(car.status)}
+            </span>
+            <span class="badge category">${esc(car.category)}</span>
+          </div>
+          <div class="car-body">
+            <div class="car-title">${esc(car.brand)} ${esc(car.name)} <span class="year">· ${car.year}</span></div>
+            <div class="car-meta">
+              <span>${esc(car.transmission)}</span>
+              <span>${esc(car.fuel_type)}</span>
+              <span>${car.seats} seats</span>
+            </div>
+            <p class="car-features">${esc(car.description || '')}</p>
+            <div class="car-foot">
+              <div class="price">${money(car.daily_rate)} <small>/ day</small></div>
+              <a class="btn btn-sm btn-accent" href="book.html?carId=${car.id}">Book Now</a>
+            </div>
+          </div>
+        </article>`).join('');
+    } catch {
+      grid.innerHTML = '<div class="empty-state"><p>Unable to load featured vehicles.</p></div>';
+    }
+  }
+
+  loadSite().then(loadFeatured);
+})();
+</script>
+</body>
+</html>
