@@ -8,8 +8,8 @@ window.DriveEasy = (() => {
       site_name: 'DriveEasy',
       site_accent: 'Rentals',
       tagline: 'Drive easy, travel far.',
-      currency_symbol: '$',
-      vat_rate: '10',
+      currency_symbol: 'N$',
+      vat_rate: '15',
       contact_email: 'hello@driveeasy.com',
       contact_phone: '+264 81 555 0100',
       contact_address: '42 Independence Ave, Windhoek',
@@ -20,7 +20,7 @@ window.DriveEasy = (() => {
       additional_driver: { label: 'Additional Driver', price: 8 },
       insurance: { label: 'Full Insurance', price: 12 }
     },
-    vatRate: 10,
+    vatRate: 15,
     locations: ['Main Office', 'Hosea Kutako Airport', 'City Center Branch'],
     customer: null
   };
@@ -35,7 +35,7 @@ window.DriveEasy = (() => {
   }
 
   function money(n) {
-    const sym = state.settings.currency_symbol || '$';
+    const sym = state.settings.currency_symbol || 'N$';
     return sym + Number(n || 0).toFixed(2);
   }
 
@@ -214,7 +214,10 @@ window.DriveEasy = (() => {
           <span class="badge category">${esc(car.category)}</span>
         </div>
         <div class="car-body">
-          <div class="car-title">${esc(car.brand)} ${esc(car.name)} <span class="year">· ${car.year}</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:.4rem">
+            <div class="car-title">${esc(car.brand)} ${esc(car.name)} <span class="year">· ${car.year}</span></div>
+            <div class="rating-line">${car.review_count ? `<span class="stars">★</span> ${car.avg_rating} <span class="muted small">(${car.review_count})</span>` : '<span class="muted small">No reviews</span>'}</div>
+          </div>
           <div class="car-meta">
             <span>${esc(car.transmission)}</span>
             <span>${esc(car.fuel_type)}</span>
@@ -278,14 +281,17 @@ window.DriveEasy = (() => {
   backdrop.addEventListener('click', e => { if (e.target === backdrop) closeModal(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !backdrop.hidden) closeModal(); });
 
-  function openDetails(id) {
+  async function openDetails(id) {
     const car = pageState.cars.find(c => c.id === id);
     if (!car) return;
     const feats = (car.features || '').split(',').filter(Boolean).map(esc);
     const minAge = site.settings.min_driver_age || '21';
     openModal(`
       <img class="detail-img" src="${esc(car.image_url)}" alt="${esc(car.brand)} ${esc(car.name)}">
-      <h2 id="modalTitle">${esc(car.brand)} ${esc(car.name)} <span class="muted" style="font-size:1rem">· ${car.year}</span></h2>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:.5rem">
+        <h2 id="modalTitle" style="margin-bottom:.3rem">${esc(car.brand)} ${esc(car.name)} <span class="muted" style="font-size:1rem">· ${car.year}</span></h2>
+        <div class="rating-line" id="modalRatingSummary">${car.review_count ? `<span class="stars">★</span> ${car.avg_rating} / 5 (${car.review_count} review${car.review_count === 1 ? '' : 's'})` : 'No reviews yet'}</div>
+      </div>
       <div style="margin-bottom:.65rem">${statusBadge(car)} <span class="badge category" style="position:static;display:inline-block">${esc(car.category)}</span></div>
       <p>${esc(car.description || '')}</p>
       <div class="spec-grid">
@@ -299,8 +305,81 @@ window.DriveEasy = (() => {
       <p class="muted small" style="margin-bottom:1rem">Rental terms: Minimum driver age ${esc(minAge)} · Valid driver's license required · Fuel returned as received.</p>
       <button class="btn btn-accent btn-lg btn-block" id="detailsBookBtn" ${car.is_available ? '' : 'disabled'}>
         ${car.is_available ? 'Book This Car' : 'Not available for selected dates'}
-      </button>`);
+      </button>
+
+      <div class="reviews-box">
+        <h3 style="font-size:1.05rem;margin-bottom:.6rem">Client Ratings &amp; Reviews</h3>
+        <div id="carReviewsList"><p class="muted small">Loading reviews…</p></div>
+        ${site.customer ? `
+          <form id="modalReviewForm" style="margin-top:1rem;padding-top:.8rem;border-top:1px solid var(--border)">
+            <strong style="display:block;margin-bottom:.3rem">Leave Your Review</strong>
+            <div class="star-picker" id="modalStarPicker">
+              <button type="button" data-val="1" class="active">★</button>
+              <button type="button" data-val="2" class="active">★</button>
+              <button type="button" data-val="3" class="active">★</button>
+              <button type="button" data-val="4" class="active">★</button>
+              <button type="button" data-val="5" class="active">★</button>
+            </div>
+            <input type="hidden" id="mr_rating" value="5">
+            <div class="field"><input id="mr_title" placeholder="Headline (optional)"></div>
+            <div class="field"><textarea id="mr_comment" rows="2" required minlength="5" placeholder="Share your experience with this vehicle…"></textarea></div>
+            <button type="submit" class="btn btn-sm">Submit Review</button>
+          </form>
+        ` : `<p class="muted small" style="margin-top:.8rem"><a href="register.html">Sign in or create an account</a> to rate and review this car.</p>`}
+      </div>`);
+
     $('#detailsBookBtn').addEventListener('click', () => openBooking(id));
+
+    async function refreshReviews() {
+      try {
+        const res = await fetch(`/api/cars/${id}/reviews`);
+        const data = await res.json();
+        $('#modalRatingSummary').innerHTML = data.review_count
+          ? `<span class="stars">★</span> ${data.avg_rating} / 5 (${data.review_count} review${data.review_count === 1 ? '' : 's'})`
+          : 'No reviews yet';
+        $('#carReviewsList').innerHTML = data.reviews.length
+          ? data.reviews.map(r => `
+            <div class="review-item">
+              <div class="review-head">
+                <strong>${esc(r.reviewer_name)}</strong>
+                <span class="stars">${'★'.repeat(r.rating)}${'☆'.repeat(5 - r.rating)}</span>
+              </div>
+              ${r.title ? `<div style="font-weight:700;font-size:.9rem">${esc(r.title)}</div>` : ''}
+              <p class="muted small">${esc(r.comment)}</p>
+            </div>`).join('')
+          : '<p class="muted small">Be the first to review this vehicle.</p>';
+      } catch {
+        $('#carReviewsList').innerHTML = '<p class="muted small">Could not load reviews.</p>';
+      }
+    }
+    refreshReviews();
+
+    if (site.customer && $('#modalReviewForm')) {
+      $$('#modalStarPicker button').forEach(b => b.addEventListener('click', () => {
+        const val = +b.dataset.val;
+        $('#mr_rating').value = val;
+        $$('#modalStarPicker button').forEach(x => x.classList.toggle('active', +x.dataset.val <= val));
+      }));
+      $('#modalReviewForm').addEventListener('submit', async e => {
+        e.preventDefault();
+        const comment = $('#mr_comment').value.trim();
+        if (comment.length < 5) return toast('Please enter at least 5 characters for your review.', 'error');
+        try {
+          const res = await fetch(`/api/cars/${id}/reviews`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rating: +$('#mr_rating').value, title: $('#mr_title').value.trim(), comment })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Could not submit review.');
+          toast('Review published!');
+          $('#mr_title').value = '';
+          $('#mr_comment').value = '';
+          await refreshReviews();
+          loadCars();
+        } catch (err) { toast(err.message, 'error'); }
+      });
+    }
   }
 
   function openBooking(id) {
@@ -361,14 +440,15 @@ window.DriveEasy = (() => {
     const days = daysBetween(p, r);
     const addons = selectedAddons();
     const addonSum = Object.keys(site.addons).reduce((s, k) => s + (addons[k] ? site.addons[k].price : 0), 0);
-    const subtotal = (car.daily_rate + addonSum) * days;
-    const vatRate = site.vatRate ?? 10;
-    const vat = subtotal * (vatRate / 100);
+    const total = (car.daily_rate + addonSum) * days;
+    const vatRate = site.vatRate ?? 15;
+    const subtotal = total / (1 + vatRate / 100);
+    const vat = total - subtotal;
     box.innerHTML = `
       <div><span>${esc(car.brand)} ${esc(car.name)} × ${days} day${days > 1 ? 's' : ''}</span><span>${money(car.daily_rate * days)}</span></div>
       ${Object.keys(site.addons).filter(k => addons[k]).map(k => `<div><span>${esc(site.addons[k].label)}</span><span>${money(site.addons[k].price * days)}</span></div>`).join('')}
-      <div><span>VAT (${vatRate}%)</span><span>${money(vat)}</span></div>
-      <div class="total"><span>Total</span><span>${money(subtotal + vat)}</span></div>`;
+      <div><span>VAT (${vatRate}%, included)</span><span>${money(vat)}</span></div>
+      <div class="total"><span>Total (incl. VAT)</span><span>${money(total)}</span></div>`;
   }
 
   function submitBooking(car) {

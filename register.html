@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Register &amp; My Account — DriveEasy Rentals</title>
-<meta name="description" content="Create a DriveEasy Rentals customer account or sign in to manage your bookings and profile.">
+<meta name="description" content="Create a DriveEasy Rentals account or sign in to manage your profile, bookings, and vehicle reviews.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -24,7 +24,6 @@
       <a href="about.html">About Us</a>
       <a href="contact.html">Contact Us</a>
       <a href="register.html" id="navRegisterLink" class="nav-cta active">Register / Sign In</a>
-      <a href="admin.html" class="nav-admin">Admin</a>
     </nav>
   </div>
 </header>
@@ -32,8 +31,8 @@
 <main class="page-main">
   <section class="page-banner">
     <div class="container">
-      <h1 id="accountBannerTitle">Customer Registration &amp; Account</h1>
-      <p id="accountBannerSub">Create an account for faster checkouts, saved license details, and live booking tracking.</p>
+      <h1 id="accountBannerTitle">Create Account &amp; Sign In</h1>
+      <p id="accountBannerSub">Access faster checkouts, manage your reservations, and share vehicle reviews.</p>
     </div>
   </section>
 
@@ -89,17 +88,32 @@
             <input id="l_password" type="password" required autocomplete="current-password">
           </div>
           <button type="submit" class="btn btn-accent btn-lg btn-block" id="loginBtn">Sign In</button>
-          <p class="muted small" style="text-align:center;margin-top:.8rem">Demo customer: <code>john@example.com</code> / <code>password123</code></p>
+          <p class="muted small" style="text-align:center;margin-top:.8rem">Demo account: <code>john@example.com</code> / <code>password123</code></p>
         </form>
       </div>
 
-      <!-- Logged-in Customer Portal -->
+      <!-- Professional Client Profile & Portal -->
       <div id="portalBox" hidden>
-        <div class="section-bar">
-          <div>
-            <h2>Welcome, <span id="custWelcomeName"></span></h2>
-            <p class="muted">Manage your reservations, cancel pending orders, or update your driver profile.</p>
+        <div class="profile-hero-card">
+          <div class="profile-identity">
+            <div class="profile-avatar" id="custAvatar">--</div>
+            <div>
+              <h2 id="custWelcomeName" style="margin:0;font-size:1.4rem">—</h2>
+              <div class="profile-meta-line">
+                <span id="custEmailLine">—</span>
+                <span>·</span>
+                <span id="custMemberSince">Member</span>
+                <span class="verified-pill" id="custVerifiedPill" hidden>Verified Driver</span>
+              </div>
+            </div>
           </div>
+
+          <div class="profile-kpis">
+            <div class="profile-kpi"><div class="num" id="kpiTrips">0</div><div class="lbl">Bookings</div></div>
+            <div class="profile-kpi"><div class="num" id="kpiSpent">$0</div><div class="lbl">Total Spent</div></div>
+            <div class="profile-kpi"><div class="num" id="kpiReviews">0</div><div class="lbl">Reviews</div></div>
+          </div>
+
           <div style="display:flex;gap:.6rem;flex-wrap:wrap">
             <a href="book.html" class="btn btn-accent">+ Book a Car</a>
             <button type="button" class="btn btn-ghost" id="custLogoutBtn">Sign Out</button>
@@ -107,22 +121,39 @@
         </div>
 
         <div class="portal-grid">
-          <div class="card">
-            <h3 style="margin-bottom:1rem">My Bookings</h3>
-            <div id="myBookingsList"><p class="muted">Loading your bookings…</p></div>
+          <div style="display:grid;gap:1.5rem">
+            <div class="card">
+              <h3 style="margin-bottom:1rem">My Bookings &amp; Trip History</h3>
+              <div id="myBookingsList"><p class="muted">Loading your bookings…</p></div>
+            </div>
+
+            <div class="card">
+              <h3 style="margin-bottom:1rem">My Car Reviews</h3>
+              <div id="myReviewsList"><p class="muted small">You haven't reviewed any vehicles yet.</p></div>
+            </div>
           </div>
 
-          <div class="card">
-            <h3 style="margin-bottom:1rem">My Profile</h3>
-            <form id="profileForm">
-              <div class="field"><label for="p_name">Full Name *</label><input id="p_name" required></div>
-              <div class="field"><label for="p_email">Email</label><input id="p_email" disabled></div>
-              <div class="field"><label for="p_phone">Phone *</label><input id="p_phone" required></div>
-              <div class="field"><label for="p_license">Driver's License Ref</label><input id="p_license"></div>
-              <div class="field"><label for="p_address">Address</label><input id="p_address"></div>
-              <div class="field"><label for="p_password">New Password (leave blank to keep current)</label><input id="p_password" type="password" minlength="6" autocomplete="new-password"></div>
-              <button type="submit" class="btn btn-accent btn-block">Save Profile</button>
-            </form>
+          <div style="display:grid;gap:1.5rem">
+            <div class="card">
+              <h3 style="margin-bottom:1rem">Personal &amp; Driver Details</h3>
+              <form id="profileForm">
+                <div class="field"><label for="p_name">Full Name *</label><input id="p_name" required></div>
+                <div class="field"><label for="p_email">Email</label><input id="p_email" disabled></div>
+                <div class="field"><label for="p_phone">Phone *</label><input id="p_phone" required></div>
+                <div class="field"><label for="p_license">Driver's License Ref</label><input id="p_license" placeholder="DL-12345"></div>
+                <div class="field"><label for="p_address">Street Address</label><input id="p_address"></div>
+                <button type="submit" class="btn btn-accent btn-block">Save Profile Changes</button>
+              </form>
+            </div>
+
+            <div class="card">
+              <h3 style="margin-bottom:1rem">Account Security</h3>
+              <form id="passwordForm">
+                <div class="field"><label for="p_cur_password">Current Password *</label><input id="p_cur_password" type="password" required autocomplete="current-password"></div>
+                <div class="field"><label for="p_new_password">New Password * (min 6 chars)</label><input id="p_new_password" type="password" minlength="6" required autocomplete="new-password"></div>
+                <button type="submit" class="btn btn-ghost btn-block">Update Password</button>
+              </form>
+            </div>
           </div>
         </div>
       </div>
@@ -130,6 +161,40 @@
     </div>
   </section>
 </main>
+
+<!-- Leave Car Review Modal -->
+<div class="modal-backdrop" id="reviewModalBackdrop" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="revModalTitle">
+    <button class="modal-close" id="revModalClose" aria-label="Close">×</button>
+    <div class="modal-body">
+      <h2 id="revModalTitle">Rate &amp; Review Vehicle</h2>
+      <p class="muted" id="revCarLabel" style="margin-bottom:.8rem"></p>
+      <form id="portalReviewForm">
+        <input type="hidden" id="rev_car_id">
+        <div class="field">
+          <label>Your Rating *</label>
+          <div class="star-picker" id="portalStarPicker" role="radiogroup" aria-label="Rating">
+            <button type="button" data-val="1" class="active">★</button>
+            <button type="button" data-val="2" class="active">★</button>
+            <button type="button" data-val="3" class="active">★</button>
+            <button type="button" data-val="4" class="active">★</button>
+            <button type="button" data-val="5" class="active">★</button>
+          </div>
+          <input type="hidden" id="rev_rating" value="5">
+        </div>
+        <div class="field">
+          <label for="rev_title">Headline</label>
+          <input id="rev_title" placeholder="e.g. Smooth ride and clean interior">
+        </div>
+        <div class="field">
+          <label for="rev_comment">Your Review *</label>
+          <textarea id="rev_comment" rows="3" required minlength="5" placeholder="Share how the vehicle performed on your trip…"></textarea>
+        </div>
+        <button type="submit" class="btn btn-accent btn-lg btn-block">Publish Review</button>
+      </form>
+    </div>
+  </div>
+</div>
 
 <footer class="site-footer">
   <div class="container">
@@ -146,7 +211,6 @@
           <li><a href="about.html">About Us</a></li>
           <li><a href="contact.html">Contact Us</a></li>
           <li><a href="register.html">Register / My Account</a></li>
-          <li><a href="admin.html">Admin Control Center</a></li>
         </ul>
       </div>
       <div>
@@ -161,7 +225,7 @@
     </div>
     <div class="footer-bottom">
       <span>© 2026 <span data-setting="site_name">DriveEasy</span> <span data-setting="site_accent">Rentals</span>.</span>
-      <span>Customer Portal</span>
+      <span>Client Account &amp; Trip Portal</span>
     </div>
   </div>
 </footer>
@@ -171,6 +235,7 @@
 <script>
 (() => {
   const { $, $$, esc, money, toast, loadSite } = window.DriveEasy;
+  let portalProfile = null;
 
   $$('.auth-tabs button').forEach(btn => btn.addEventListener('click', () => {
     const tab = btn.dataset.tab;
@@ -179,26 +244,49 @@
     $('#loginForm').hidden = tab !== 'login';
   }));
 
+  function initials(name) {
+    return String(name || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() || '').join('') || '?';
+  }
+
+  function formatMemberDate(dt) {
+    if (!dt) return 'Member';
+    const d = new Date(dt.replace(' ', 'T') + 'Z');
+    return isNaN(d) ? 'Member' : 'Member since ' + d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  }
+
   function showAuth() {
     $('#authBox').hidden = false;
     $('#portalBox').hidden = true;
-    $('#accountBannerTitle').textContent = 'Customer Registration & Account';
-    $('#accountBannerSub').textContent = 'Create an account for faster checkouts, saved license details, and live booking tracking.';
+    $('#accountBannerTitle').textContent = 'Create Account & Sign In';
+    $('#accountBannerSub').textContent = 'Access faster checkouts, manage your reservations, and share vehicle reviews.';
   }
 
-  function showPortal(cust, bookings) {
+  function showPortal(cust, bookings, reviews) {
+    portalProfile = cust;
     $('#authBox').hidden = true;
     $('#portalBox').hidden = false;
-    $('#accountBannerTitle').textContent = 'My Account & Bookings';
-    $('#accountBannerSub').textContent = `Signed in as ${cust.email}`;
+    $('#accountBannerTitle').textContent = 'My Account';
+    $('#accountBannerSub').textContent = 'Manage your driver profile, active reservations, and vehicle reviews.';
+
+    $('#custAvatar').textContent = initials(cust.full_name);
     $('#custWelcomeName').textContent = cust.full_name;
+    $('#custEmailLine').textContent = cust.email;
+    $('#custMemberSince').textContent = formatMemberDate(cust.created_at);
+    $('#custVerifiedPill').hidden = !(cust.license_ref && cust.license_ref.trim());
+
+    const spent = (bookings || []).filter(b => b.status !== 'cancelled').reduce((s, b) => s + Number(b.total_amount || 0), 0);
+    $('#kpiTrips').textContent = (bookings || []).length;
+    $('#kpiSpent').textContent = money(spent);
+    $('#kpiReviews').textContent = (reviews || []).length;
+
     $('#p_name').value = cust.full_name || '';
     $('#p_email').value = cust.email || '';
     $('#p_phone').value = cust.phone || '';
     $('#p_license').value = cust.license_ref || '';
     $('#p_address').value = cust.address || '';
-    $('#p_password').value = '';
+
     renderMyBookings(bookings || []);
+    renderMyReviews(reviews || []);
   }
 
   function renderMyBookings(bookings) {
@@ -214,9 +302,12 @@
           <span class="status-badge status-${esc(b.status)}">${esc(b.status)}</span>
         </div>
         <div class="muted small">${esc(b.pickup_date)} → ${esc(b.return_date)} (${b.total_days} days) · ${esc(b.pickup_location || 'Main Office')}</div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:.2rem">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;flex-wrap:wrap;margin-top:.25rem">
           <strong>Total: ${money(b.total_amount)}</strong>
-          ${b.status === 'pending' ? `<button class="btn btn-danger btn-sm" data-cancel="${b.id}" type="button">Cancel Booking</button>` : ''}
+          <div style="display:flex;gap:.45rem;flex-wrap:wrap">
+            ${b.status !== 'cancelled' ? `<button class="btn btn-ghost btn-sm" data-rate-car="${b.car_id}" data-car-label="${esc(b.car_brand + ' ' + b.car_name)}" type="button">★ Rate &amp; Review</button>` : ''}
+            ${b.status === 'pending' ? `<button class="btn btn-danger btn-sm" data-cancel="${b.id}" type="button">Cancel Booking</button>` : ''}
+          </div>
         </div>
       </div>`).join('');
 
@@ -228,11 +319,69 @@
         if (!res.ok) throw new Error(data.error || 'Could not cancel.');
         toast('Booking cancelled.');
         refreshPortal();
-      } catch (err) {
-        toast(err.message, 'error');
-      }
+      } catch (err) { toast(err.message, 'error'); }
+    }));
+
+    $$('[data-rate-car]').forEach(btn => btn.addEventListener('click', () => {
+      openReviewModal(btn.dataset.rateCar, btn.dataset.carLabel);
     }));
   }
+
+  function renderMyReviews(reviews) {
+    const box = $('#myReviewsList');
+    if (!reviews.length) {
+      box.innerHTML = '<p class="muted small">You haven\'t written any vehicle reviews yet. Rate a car from your bookings above or on the Book Now page.</p>';
+      return;
+    }
+    box.innerHTML = reviews.map(r => `
+      <div class="review-item">
+        <div class="review-head">
+          <strong>${esc(r.car_brand)} ${esc(r.car_name)}</strong>
+          <span class="stars">${'★'.repeat(r.rating)}${'☆'.repeat(5 - r.rating)}</span>
+        </div>
+        ${r.title ? `<div style="font-weight:700;font-size:.92rem">${esc(r.title)}</div>` : ''}
+        <p class="muted small">${esc(r.comment)}</p>
+      </div>`).join('');
+  }
+
+  // ---------- Review Modal ----------
+  const revBackdrop = $('#reviewModalBackdrop');
+  function setStars(val) {
+    $('#rev_rating').value = val;
+    $$('#portalStarPicker button').forEach(b => b.classList.toggle('active', +b.dataset.val <= val));
+  }
+  $$('#portalStarPicker button').forEach(b => b.addEventListener('click', () => setStars(+b.dataset.val)));
+  function openReviewModal(carId, label) {
+    $('#rev_car_id').value = carId;
+    $('#revCarLabel').textContent = label;
+    $('#rev_title').value = '';
+    $('#rev_comment').value = '';
+    setStars(5);
+    revBackdrop.hidden = false;
+  }
+  $('#revModalClose').addEventListener('click', () => { revBackdrop.hidden = true; });
+  revBackdrop.addEventListener('click', e => { if (e.target === revBackdrop) revBackdrop.hidden = true; });
+
+  $('#portalReviewForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const carId = $('#rev_car_id').value;
+    try {
+      const res = await fetch(`/api/cars/${carId}/reviews`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rating: +$('#rev_rating').value,
+          title: $('#rev_title').value.trim(),
+          comment: $('#rev_comment').value.trim()
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not publish review.');
+      toast('Thank you! Your review has been published.');
+      revBackdrop.hidden = true;
+      refreshPortal();
+    } catch (err) { toast(err.message, 'error'); }
+  });
 
   async function refreshPortal() {
     try {
@@ -240,10 +389,8 @@
       if (!res.ok) return showAuth();
       const data = await res.json();
       await loadSite();
-      showPortal(data.customer, data.bookings);
-    } catch {
-      showAuth();
-    }
+      showPortal(data.customer, data.bookings, data.reviews);
+    } catch { showAuth(); }
   }
 
   $('#registerForm').addEventListener('submit', async e => {
@@ -263,19 +410,14 @@
     btn.disabled = true; btn.textContent = 'Creating account…';
     try {
       const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Registration failed.');
       toast('Account created! Welcome, ' + data.customer.full_name);
       await refreshPortal();
-    } catch (err) {
-      toast(err.message, 'error');
-    } finally {
-      btn.disabled = false; btn.textContent = 'Create Account';
-    }
+    } catch (err) { toast(err.message, 'error'); }
+    finally { btn.disabled = false; btn.textContent = 'Create Account'; }
   });
 
   $('#loginForm').addEventListener('submit', async e => {
@@ -284,43 +426,57 @@
     btn.disabled = true; btn.textContent = 'Signing in…';
     try {
       const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: $('#l_email').value.trim(), password: $('#l_password').value })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Sign in failed.');
       toast('Welcome back, ' + data.customer.full_name);
       await refreshPortal();
-    } catch (err) {
-      toast(err.message, 'error');
-    } finally {
-      btn.disabled = false; btn.textContent = 'Sign In';
-    }
+    } catch (err) { toast(err.message, 'error'); }
+    finally { btn.disabled = false; btn.textContent = 'Sign In'; }
   });
 
   $('#profileForm').addEventListener('submit', async e => {
     e.preventDefault();
-    const body = {
-      full_name: $('#p_name').value.trim(),
-      phone: $('#p_phone').value.trim(),
-      license_ref: $('#p_license').value.trim(),
-      address: $('#p_address').value.trim(),
-      new_password: $('#p_password').value || undefined
-    };
     try {
       const res = await fetch('/api/auth/profile', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          full_name: $('#p_name').value.trim(),
+          phone: $('#p_phone').value.trim(),
+          license_ref: $('#p_license').value.trim(),
+          address: $('#p_address').value.trim()
+        })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Update failed.');
       toast('Profile updated.');
       await refreshPortal();
-    } catch (err) {
-      toast(err.message, 'error');
-    }
+    } catch (err) { toast(err.message, 'error'); }
+  });
+
+  $('#passwordForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    if (!portalProfile) return;
+    try {
+      const res = await fetch('/api/auth/profile', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          full_name: portalProfile.full_name,
+          phone: portalProfile.phone,
+          license_ref: portalProfile.license_ref,
+          address: portalProfile.address,
+          current_password: $('#p_cur_password').value,
+          new_password: $('#p_new_password').value
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Password update failed.');
+      $('#p_cur_password').value = '';
+      $('#p_new_password').value = '';
+      toast('Password updated.');
+    } catch (err) { toast(err.message, 'error'); }
   });
 
   $('#custLogoutBtn').addEventListener('click', async () => {

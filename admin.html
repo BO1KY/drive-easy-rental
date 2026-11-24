@@ -14,10 +14,12 @@
     <img src="logo.jpg" alt="DriveEasy Rentals Logo" class="brand-logo" style="width:56px;height:56px;margin:0 auto .8rem">
     <h1>DriveEasy <span class="brand-accent">Admin</span></h1>
     <p class="muted">Sign in to control fleet, bookings, customers, messages &amp; website content.</p>
-    <div class="field"><label for="loginUser">Username</label><input id="loginUser" required autocomplete="username"></div>
+    <div class="field"><label for="loginUser">Username or email</label><input id="loginUser" required autocomplete="username" placeholder="admin or tomas@driveeasy.example"></div>
     <div class="field"><label for="loginPass">Password</label><input id="loginPass" type="password" required autocomplete="current-password"></div>
     <button class="btn btn-accent btn-lg btn-block" type="submit">Sign In</button>
-    <p class="muted small">Default credentials: <code>admin</code> / <code>admin123</code></p>
+    <p class="muted small">Admin: <code>admin</code> / <code>admin123</code><br>
+      Staff demo: <code>tomas@driveeasy.example</code> / <code>password123</code> ·
+      Manager demo: <code>ndapewa@driveeasy.example</code> / <code>password123</code></p>
     <a href="index.html" class="muted small">← Back to Website</a>
   </form>
 </div>
@@ -30,8 +32,12 @@
       <button class="active" data-section="dashboard">Dashboard</button>
       <button data-section="cars">Fleet / Cars</button>
       <button data-section="bookings">Bookings <span class="nav-pill" id="pendingPill" hidden>0</span></button>
+      <button data-section="quotes">Quotes</button>
+      <button data-section="invoices">Invoices</button>
+      <button data-section="staff">Staff</button>
       <button data-section="customers">Customers</button>
       <button data-section="messages">Messages <span class="nav-pill" id="messagesPill" hidden>0</span></button>
+      <button data-section="reviews">Reviews</button>
       <button data-section="settings">Site Settings</button>
     </nav>
     <div class="sidebar-foot">
@@ -45,10 +51,54 @@
     <!-- Dashboard -->
     <section class="admin-section" id="section-dashboard">
       <div class="section-head">
-        <h1>Dashboard</h1>
+        <h1>Dashboard &amp; Sales Analytics</h1>
         <button class="btn btn-ghost btn-sm" id="refreshAllBtn" type="button">Refresh Data</button>
       </div>
       <div class="stat-cards" id="statCards"></div>
+
+      <!-- Primary Sales Charts -->
+      <div class="charts-grid">
+        <div class="chart-card">
+          <div class="chart-head">
+            <h2 id="salesChartTitle">Sales Comparison by Month</h2>
+            <div class="chart-controls">
+              <div class="chart-tabs" id="salesModeTabs">
+                <button type="button" class="active" data-mode="monthly">By Month</button>
+                <button type="button" data-mode="yearly">By Year</button>
+              </div>
+              <select id="chartYearSelect" aria-label="Primary year"></select>
+              <select id="chartCompareYearSelect" aria-label="Compare year"></select>
+            </div>
+          </div>
+          <div class="chart-legend" id="salesChartLegend"></div>
+          <div class="chart-svg-wrap" id="salesChartWrap"></div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-head">
+            <h2>Compare Cars</h2>
+            <div class="chart-tabs" id="carMetricTabs">
+              <button type="button" class="active" data-metric="revenue">Revenue</button>
+              <button type="button" data-metric="bookings">Bookings</button>
+              <button type="button" data-metric="rating">Rating</button>
+            </div>
+          </div>
+          <div id="carCompareChart" class="hbar-list"></div>
+        </div>
+      </div>
+
+      <!-- Category & Status Breakdown Charts -->
+      <div class="charts-grid equal">
+        <div class="chart-card">
+          <div class="chart-head"><h2>Sales by Vehicle Category</h2></div>
+          <div id="categoryChart" class="donut-wrap"></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-head"><h2>Bookings by Status</h2></div>
+          <div id="statusChart" class="donut-wrap"></div>
+        </div>
+      </div>
+
       <div class="two-col">
         <div class="card">
           <h2 style="font-size:1.1rem;margin-bottom:.8rem">Recent Bookings</h2>
@@ -87,6 +137,36 @@
       <div class="table-wrap"><table class="admin-table" id="bookingsTable"></table></div>
     </section>
 
+    <!-- Quotes -->
+    <section class="admin-section" id="section-quotes" hidden>
+      <div class="section-head">
+        <h1>Quotations</h1>
+        <button class="btn btn-accent" id="addQuoteBtn" type="button">+ New Quote</button>
+      </div>
+      <div class="table-wrap"><table class="admin-table" id="quotesTable"></table></div>
+    </section>
+
+    <!-- Invoices -->
+    <section class="admin-section" id="section-invoices" hidden>
+      <div class="section-head">
+        <h1>Tax Invoices</h1>
+        <div class="booking-toolbar">
+          <span class="muted small">NAD · VAT included</span>
+          <button class="btn btn-accent" id="addInvoiceBtn" type="button">+ New Invoice</button>
+        </div>
+      </div>
+      <div class="table-wrap"><table class="admin-table" id="invoicesTable"></table></div>
+    </section>
+
+    <!-- Staff -->
+    <section class="admin-section" id="section-staff" hidden>
+      <div class="section-head">
+        <h1>Staff &amp; Managers</h1>
+        <button class="btn btn-accent" id="addStaffBtn" type="button">+ Add Staff</button>
+      </div>
+      <div class="table-wrap"><table class="admin-table" id="staffTable"></table></div>
+    </section>
+
     <!-- Customers -->
     <section class="admin-section" id="section-customers" hidden>
       <div class="section-head">
@@ -113,6 +193,14 @@
         </div>
       </div>
       <div class="table-wrap"><table class="admin-table" id="messagesTable"></table></div>
+    </section>
+
+    <!-- Reviews -->
+    <section class="admin-section" id="section-reviews" hidden>
+      <div class="section-head">
+        <h1>Client Reviews &amp; Ratings</h1>
+      </div>
+      <div class="table-wrap"><table class="admin-table" id="reviewsTable"></table></div>
     </section>
 
     <!-- Site Settings (Control Everything) -->
@@ -224,6 +312,125 @@
   <div class="modal" role="dialog" aria-modal="true">
     <button class="modal-close" id="detailModalClose" aria-label="Close">×</button>
     <div class="modal-body" id="detailModalBody"></div>
+  </div>
+</div>
+
+<!-- Quotation form modal -->
+<div class="modal-backdrop" id="quoteModalBackdrop" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="quoteFormTitle">
+    <button class="modal-close" id="quoteModalClose" aria-label="Close">×</button>
+    <div class="modal-body">
+      <h2 id="quoteFormTitle">New Quotation</h2>
+      <form id="quoteForm" novalidate>
+        <div class="grid-2">
+          <div class="field"><label>Customer name *</label><input id="q_name" required placeholder="Jane Doe"></div>
+          <div class="field"><label>Email *</label><input id="q_email" type="email" required placeholder="jane@example.com"></div>
+        </div>
+        <div class="grid-2">
+          <div class="field"><label>Phone</label><input id="q_phone" placeholder="+264 81 000 0000"></div>
+          <div class="field"><label>Vehicle *</label><select id="q_car"></select></div>
+        </div>
+        <div class="grid-2">
+          <div class="field"><label>Pickup date *</label><input id="q_pickup" type="date" required></div>
+          <div class="field"><label>Return date *</label><input id="q_return" type="date" required></div>
+        </div>
+        <div class="field"><label>Add-ons (per day)</label>
+          <div class="check-row">
+            <label><input type="checkbox" id="q_child_seat"> Child Seat (N$5)</label>
+            <label><input type="checkbox" id="q_additional_driver"> Extra Driver (N$8)</label>
+            <label><input type="checkbox" id="q_insurance"> Full Insurance (N$12)</label>
+          </div>
+        </div>
+        <div class="field"><label>Notes</label><textarea id="q_notes" rows="2"></textarea></div>
+        <div class="quote-preview" id="quotePreview"></div>
+        <button class="btn btn-accent btn-lg btn-block" type="submit">Create Quote</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Point of sale modal -->
+<div class="modal-backdrop" id="posModalBackdrop" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="posModalTitle">
+    <button class="modal-close" id="posModalClose" aria-label="Close">×</button>
+    <div class="modal-body">
+      <h2 id="posModalTitle">Point of Sale — Approve Rental</h2>
+      <div id="posSummary"></div>
+      <form id="posForm" novalidate>
+        <input type="hidden" id="pos_booking_id">
+        <div class="field"><label>Payment method *</label>
+          <select id="pos_method">
+            <option>Cash</option><option>Card</option><option>Bank transfer</option><option>Mobile money</option>
+          </select>
+        </div>
+        <div class="field"><label>Payment reference</label><input id="pos_reference" placeholder="Receipt / transaction number (optional)"></div>
+        <button class="btn btn-accent btn-lg btn-block" type="submit">Process Payment &amp; Print Invoice</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Printable quote / invoice document -->
+<div class="modal-backdrop" id="docModalBackdrop" hidden>
+  <div class="modal doc-modal" role="dialog" aria-modal="true">
+    <div class="doc-toolbar">
+      <button class="btn btn-sm" id="docPrintBtn" type="button">Print Document</button>
+      <button class="btn btn-ghost btn-sm" id="docCloseBtn" type="button">Close</button>
+    </div>
+    <div id="docContent"></div>
+  </div>
+</div>
+
+<!-- Walk-in client invoice modal -->
+<div class="modal-backdrop" id="walkInModalBackdrop" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="walkInFormTitle">
+    <button class="modal-close" id="walkInModalClose" aria-label="Close">×</button>
+    <div class="modal-body">
+      <h2 id="walkInFormTitle">New Walk-in Invoice</h2>
+      <p class="muted small">Create a tax invoice for a client without an online booking.</p>
+      <form id="walkInForm" novalidate>
+        <div class="grid-2">
+          <div class="field"><label>Client name *</label><input id="wi_name" required placeholder="Jane Doe"></div>
+          <div class="field"><label>Email</label><input id="wi_email" type="email" placeholder="jane@example.com"></div>
+        </div>
+        <div class="field"><label>Phone</label><input id="wi_phone" placeholder="+264 81 000 0000"></div>
+        <div class="field"><label>Item / service description *</label><input id="wi_item" required placeholder="Vehicle rental — Toyota Corolla"></div>
+        <div class="grid-2">
+          <div class="field"><label>Amount (NAD, incl. VAT) *</label><input id="wi_amount" type="number" min="0" step="0.01" required></div>
+          <div class="field"><label>Due date</label><input id="wi_due" type="date"></div>
+        </div>
+        <div class="grid-2">
+          <div class="field"><label>Rental start</label><input id="wi_pickup" type="date"></div>
+          <div class="field"><label>Rental end</label><input id="wi_return" type="date"></div>
+        </div>
+        <div class="field"><label>Notes</label><textarea id="wi_notes" rows="2"></textarea></div>
+        <button class="btn btn-accent btn-lg btn-block" type="submit">Create Invoice</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Staff / manager form modal -->
+<div class="modal-backdrop" id="staffModalBackdrop" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="staffFormTitle">
+    <button class="modal-close" id="staffModalClose" aria-label="Close">×</button>
+    <div class="modal-body">
+      <h2 id="staffFormTitle">Add Staff / Manager</h2>
+      <form id="staffForm" novalidate>
+        <div class="grid-2">
+          <div class="field"><label>Full name *</label><input id="st_name" required placeholder="Jane Doe"></div>
+          <div class="field"><label>Email *</label><input id="st_email" type="email" required placeholder="jane@driveeasy.example"></div>
+        </div>
+        <div class="grid-2">
+          <div class="field"><label>Username *</label><input id="st_username" required placeholder="jane"></div>
+          <div class="field"><label>Temporary password *</label><input id="st_password" type="password" minlength="6" required placeholder="At least 6 characters"></div>
+        </div>
+        <div class="field"><label>Role *</label>
+          <select id="st_role"><option value="staff">Staff</option><option value="manager">Manager</option></select>
+        </div>
+        <button class="btn btn-accent btn-lg btn-block" type="submit">Create Account</button>
+      </form>
+    </div>
   </div>
 </div>
 

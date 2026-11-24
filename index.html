@@ -24,7 +24,6 @@
       <a href="about.html">About Us</a>
       <a href="contact.html">Contact Us</a>
       <a href="register.html" id="navRegisterLink" class="nav-cta">Register / Sign In</a>
-      <a href="admin.html" class="nav-admin">Admin</a>
     </nav>
   </div>
 </header>
@@ -154,8 +153,7 @@
           <li><a href="about.html">About Us</a></li>
           <li><a href="contact.html">Contact Us</a></li>
           <li><a href="register.html">Register / My Account</a></li>
-          <li><a href="admin.html">Admin Control Center</a></li>
-        </ul>
+          </ul>
       </div>
       <div>
         <h3>Contact</h3>
@@ -219,7 +217,10 @@
             <span class="badge category">${esc(car.category)}</span>
           </div>
           <div class="car-body">
-            <div class="car-title">${esc(car.brand)} ${esc(car.name)} <span class="year">· ${car.year}</span></div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:.4rem">
+              <div class="car-title">${esc(car.brand)} ${esc(car.name)} <span class="year">· ${car.year}</span></div>
+              <div class="rating-line">${car.review_count ? `<span class="stars">★</span> ${car.avg_rating} <span class="muted small">(${car.review_count})</span>` : ''}</div>
+            </div>
             <div class="car-meta">
               <span>${esc(car.transmission)}</span>
               <span>${esc(car.fuel_type)}</span>

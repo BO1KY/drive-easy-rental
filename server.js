@@ -43,6 +43,7 @@ const PAGES = {
   '/register': 'register.html',
   '/login': 'register.html',
   '/account': 'register.html',
+  '/profile': 'register.html',
   '/admin': 'admin.html'
 };
 for (const [route, file] of Object.entries(PAGES)) {
@@ -87,9 +88,10 @@ function priceQuote(car, pickup, ret, addOns, settings) {
     if (addOns[key]) addonTotal += addonsCfg[key].price;
   }
   const vatRate = Math.max(0, Number(settings.vat_rate) || 0) / 100;
-  const subtotal = round2((car.daily_rate + addonTotal) * days);
-  const vat = round2(subtotal * vatRate);
-  return { days, subtotal, vat, total: round2(subtotal + vat) };
+  const total = round2((car.daily_rate + addonTotal) * days);
+  const subtotal = round2(total / (1 + vatRate));
+  const vat = round2(total - subtotal);
+  return { days, subtotal, vat, total };
 }
 
 function bookingCode() {
@@ -97,9 +99,38 @@ function bookingCode() {
 }
 
 // ---------- auth middlewares ----------
+const ROLE_PERMISSIONS = {
+  admin: ['*'],
+  manager: ['cars:write', 'bookings:write', 'quotes:write', 'quotes:delete',
+    'invoices:write', 'invoices:delete', 'messages:write', 'reviews:write',
+    'customers:write', 'settings:write'],
+  staff: ['quotes:write', 'invoices:write', 'bookings:approve']
+};
+function sessionActor(req) {
+  if (!req.session) return null;
+  if (req.session.adminId) {
+    return { id: req.session.adminId, name: req.session.adminUsername || 'admin', role: 'admin' };
+  }
+  if (req.session.staffId) {
+    const s = db.prepare('SELECT id, full_name, role, status FROM staff_accounts WHERE id = ?').get(req.session.staffId);
+    if (s && s.status === 'active') return { id: s.id, name: s.full_name, role: s.role };
+  }
+  return null;
+}
 function requireAdmin(req, res, next) {
-  if (req.session && req.session.adminId) return next();
+  if (sessionActor(req)) return next();
   return res.status(401).json({ error: 'Admin login required.' });
+}
+function requirePerm(perm) {
+  return (req, res, next) => {
+    const a = sessionActor(req);
+    if (!a) return res.status(401).json({ error: 'Admin login required.' });
+    const perms = ROLE_PERMISSIONS[a.role] || [];
+    if (!perms.includes('*') && !perms.includes(perm)) {
+      return res.status(403).json({ error: 'You do not have permission to perform this action.' });
+    }
+    next();
+  };
 }
 
 function requireCustomer(req, res, next) {
@@ -160,11 +191,14 @@ app.get('/api/cars', (req, res) => {
   }
 
   const rows = db.prepare(`
-    SELECT c.*, CASE WHEN EXISTS (
+    SELECT c.*,
+      CASE WHEN EXISTS (
         SELECT 1 FROM bookings b WHERE b.car_id = c.id
           AND b.status IN ('pending','confirmed','active')
           AND b.pickup_date <= date('now') AND b.return_date >= date('now')
-      ) THEN 1 ELSE 0 END AS booked_now
+      ) THEN 1 ELSE 0 END AS booked_now,
+      COALESCE((SELECT ROUND(AVG(r.rating), 1) FROM reviews r WHERE r.car_id = c.id AND r.status = 'published'), 0) AS avg_rating,
+      (SELECT COUNT(*) FROM reviews r WHERE r.car_id = c.id AND r.status = 'published') AS review_count
     FROM cars c WHERE ${where.join(' AND ')} ${availabilityJoin}
     ORDER BY c.featured DESC, c.daily_rate ASC`).all(...params);
 
@@ -177,13 +211,54 @@ app.get('/api/cars', (req, res) => {
 });
 
 app.get('/api/cars/:id', (req, res) => {
-  const car = db.prepare('SELECT * FROM cars WHERE id = ?').get(req.params.id);
+  const car = db.prepare(`SELECT c.*,
+    COALESCE((SELECT ROUND(AVG(r.rating), 1) FROM reviews r WHERE r.car_id = c.id AND r.status = 'published'), 0) AS avg_rating,
+    (SELECT COUNT(*) FROM reviews r WHERE r.car_id = c.id AND r.status = 'published') AS review_count
+    FROM cars c WHERE c.id = ?`).get(req.params.id);
   if (!car) return bad(res, 'Car not found.', 404);
   const busyRanges = db.prepare(`SELECT pickup_date, return_date, status FROM bookings
     WHERE car_id = ? AND status IN ('pending','confirmed','active')
       AND return_date >= date('now') ORDER BY pickup_date`).all(car.id);
   const bookedNow = busyRanges.some(r => r.pickup_date <= new Date().toISOString().slice(0, 10));
   res.json({ ...car, is_available: car.status === 'available' && !bookedNow, busy_ranges: busyRanges.map(clean) });
+});
+
+app.get('/api/cars/:id/reviews', (req, res) => {
+  const car = db.prepare('SELECT id FROM cars WHERE id = ?').get(req.params.id);
+  if (!car) return bad(res, 'Car not found.', 404);
+  const reviews = db.prepare(`SELECT id, car_id, reviewer_name, rating, title, comment, created_at
+    FROM reviews WHERE car_id = ? AND status = 'published' ORDER BY created_at DESC`).all(car.id).map(clean);
+  const summary = db.prepare(`SELECT COALESCE(ROUND(AVG(rating), 1), 0) AS avg_rating, COUNT(*) AS review_count
+    FROM reviews WHERE car_id = ? AND status = 'published'`).get(car.id);
+  res.json({ ...clean(summary), reviews });
+});
+
+app.post('/api/cars/:id/reviews', requireCustomer, (req, res) => {
+  const car = db.prepare('SELECT id, brand, name FROM cars WHERE id = ?').get(req.params.id);
+  if (!car) return bad(res, 'Car not found.', 404);
+  const { rating, title, comment } = req.body || {};
+  const r = Number(rating);
+  if (!Number.isInteger(r) || r < 1 || r > 5) return bad(res, 'Rating must be between 1 and 5 stars.');
+  if (!comment || String(comment).trim().length < 5) return bad(res, 'Review comment must be at least 5 characters.');
+
+  const existing = db.prepare('SELECT id FROM reviews WHERE car_id = ? AND customer_id = ?').get(car.id, req.customer.id);
+  let reviewId;
+  if (existing) {
+    db.prepare(`UPDATE reviews SET reviewer_name = ?, rating = ?, title = ?, comment = ?, status = 'published', created_at = datetime('now') WHERE id = ?`).run(
+      req.customer.full_name, r, String(title || '').trim(), String(comment).trim(), existing.id
+    );
+    reviewId = existing.id;
+  } else {
+    const info = db.prepare(`INSERT INTO reviews (car_id, customer_id, reviewer_name, rating, title, comment, status)
+      VALUES (?,?,?,?,?,?,'published')`).run(
+      car.id, req.customer.id, req.customer.full_name, r, String(title || '').trim(), String(comment).trim()
+    );
+    reviewId = Number(info.lastInsertRowid);
+  }
+  const summary = db.prepare(`SELECT COALESCE(ROUND(AVG(rating), 1), 0) AS avg_rating, COUNT(*) AS review_count
+    FROM reviews WHERE car_id = ? AND status = 'published'`).get(car.id);
+  const review = db.prepare('SELECT id, car_id, reviewer_name, rating, title, comment, created_at FROM reviews WHERE id = ?').get(reviewId);
+  res.status(existing ? 200 : 201).json({ review: clean(review), summary: clean(summary) });
 });
 
 app.post('/api/bookings', (req, res) => {
@@ -315,14 +390,25 @@ app.get('/api/auth/me', requireCustomer, (req, res) => {
     FROM bookings b JOIN cars c ON c.id = b.car_id
     WHERE b.customer_id = ? OR LOWER(b.customer_email) = LOWER(?)
     ORDER BY b.created_at DESC`).all(req.customer.id, req.customer.email);
-  res.json({ customer: req.customer, bookings: bookings.map(clean) });
+  const myReviews = db.prepare(`SELECT r.*, c.brand AS car_brand, c.name AS car_name
+    FROM reviews r JOIN cars c ON c.id = r.car_id
+    WHERE r.customer_id = ? ORDER BY r.created_at DESC`).all(req.customer.id);
+  res.json({ customer: req.customer, bookings: bookings.map(clean), reviews: myReviews.map(clean) });
 });
 
 app.put('/api/auth/profile', requireCustomer, (req, res) => {
-  const { full_name, phone, license_ref, address, new_password } = req.body || {};
+  const { full_name, phone, license_ref, address, current_password, new_password } = req.body || {};
   if (!full_name || String(full_name).trim().length < 2) return bad(res, 'Full name is required.');
   if (!phone || String(phone).trim().length < 5) return bad(res, 'Phone number is required.');
-  if (new_password && String(new_password).length < 6) return bad(res, 'New password must be at least 6 characters.');
+  if (new_password) {
+    if (String(new_password).length < 6) return bad(res, 'New password must be at least 6 characters.');
+    if (current_password !== undefined) {
+      const custRow = db.prepare('SELECT password_hash FROM customers WHERE id = ?').get(req.customer.id);
+      if (!custRow || !verifyPassword(String(current_password), custRow.password_hash)) {
+        return bad(res, 'Current password is incorrect.');
+      }
+    }
+  }
 
   db.prepare(`UPDATE customers SET full_name = ?, phone = ?, license_ref = ?, address = ? WHERE id = ?`).run(
     String(full_name).trim(),
@@ -352,28 +438,89 @@ app.patch('/api/my-bookings/:id/cancel', requireCustomer, (req, res) => {
 // ================= ADMIN AUTH =================
 app.post('/api/admin/login', (req, res) => {
   const { username, password } = req.body || {};
-  const admin = db.prepare('SELECT * FROM admins WHERE username = ?').get(String(username || '').trim());
-  if (!admin || !verifyPassword(String(password || ''), admin.password_hash)) {
-    return bad(res, 'Invalid username or password.', 401);
+  const ident = String(username || '').trim().toLowerCase();
+  const pass = String(password || '');
+  const admin = db.prepare('SELECT * FROM admins WHERE lower(username) = ?').get(ident);
+  if (admin && verifyPassword(pass, admin.password_hash)) {
+    req.session.adminId = admin.id;
+    req.session.adminUsername = admin.username;
+    return res.json({ username: admin.username, name: 'Administrator', role: 'admin', permissions: ROLE_PERMISSIONS.admin });
   }
-  req.session.adminId = admin.id;
-  req.session.adminUsername = admin.username;
-  res.json({ username: admin.username });
+  const staff = db.prepare('SELECT * FROM staff_accounts WHERE lower(email) = ? OR lower(username) = ?').get(ident, ident);
+  if (staff && staff.status === 'active' && verifyPassword(pass, staff.password_hash)) {
+    req.session.staffId = staff.id;
+    return res.json({ username: staff.username, name: staff.full_name, role: staff.role, permissions: ROLE_PERMISSIONS[staff.role] });
+  }
+  return bad(res, 'Invalid username or password.', 401);
 });
 
 app.post('/api/admin/logout', (req, res) => {
   if (req.session) {
     delete req.session.adminId;
     delete req.session.adminUsername;
+    delete req.session.staffId;
   }
   res.json({ ok: true });
 });
 
 app.get('/api/admin/me', requireAdmin, (req, res) => {
-  res.json({ username: req.session.adminUsername });
+  const a = sessionActor(req);
+  res.json({ username: a.name, name: a.name, role: a.role, permissions: ROLE_PERMISSIONS[a.role] || [] });
 });
 
-app.post('/api/admin/change-password', requireAdmin, (req, res) => {
+const publicStaff = (s) => ({
+  id: s.id, full_name: s.full_name, email: s.email, username: s.username,
+  role: s.role, status: s.status, created_at: s.created_at
+});
+
+app.get('/api/admin/staff', requirePerm('staff:manage'), (req, res) => {
+  res.json(db.prepare('SELECT * FROM staff_accounts ORDER BY created_at DESC').all().map(publicStaff));
+});
+
+app.post('/api/admin/staff', requirePerm('staff:manage'), (req, res) => {
+  const b = req.body || {};
+  if (!b.full_name || String(b.full_name).trim().length < 2) return bad(res, 'Full name is required.');
+  if (!isEmail(b.email)) return bad(res, 'A valid email address is required.');
+  if (!b.username || String(b.username).trim().length < 3) return bad(res, 'Username must be at least 3 characters.');
+  if (!b.password || String(b.password).length < 6) return bad(res, 'Password must be at least 6 characters.');
+  if (!['staff', 'manager'].includes(b.role)) return bad(res, 'Role must be staff or manager.');
+  const email = String(b.email).trim().toLowerCase();
+  const username = String(b.username).trim().toLowerCase();
+  if (db.prepare('SELECT id FROM staff_accounts WHERE lower(email) = ? OR lower(username) = ?').get(email, username)) {
+    return bad(res, 'A staff account with this email or username already exists.', 409);
+  }
+  const info = db.prepare(`INSERT INTO staff_accounts (full_name, email, username, password_hash, role)
+    VALUES (?,?,?,?,?)`).run(
+    String(b.full_name).trim(), email, username, hashPassword(String(b.password)), b.role
+  );
+  res.status(201).json(publicStaff(db.prepare('SELECT * FROM staff_accounts WHERE id = ?').get(Number(info.lastInsertRowid))));
+});
+
+app.patch('/api/admin/staff/:id/role', requirePerm('staff:manage'), (req, res) => {
+  const s = db.prepare('SELECT * FROM staff_accounts WHERE id = ?').get(req.params.id);
+  if (!s) return bad(res, 'Staff account not found.', 404);
+  const role = (req.body || {}).role;
+  if (!['staff', 'manager'].includes(role)) return bad(res, 'Role must be staff or manager.');
+  db.prepare('UPDATE staff_accounts SET role = ? WHERE id = ?').run(role, s.id);
+  res.json(publicStaff(db.prepare('SELECT * FROM staff_accounts WHERE id = ?').get(s.id)));
+});
+
+app.patch('/api/admin/staff/:id/status', requirePerm('staff:manage'), (req, res) => {
+  const s = db.prepare('SELECT * FROM staff_accounts WHERE id = ?').get(req.params.id);
+  if (!s) return bad(res, 'Staff account not found.', 404);
+  const status = (req.body || {}).status;
+  if (!['active', 'suspended'].includes(status)) return bad(res, 'Invalid status.');
+  db.prepare('UPDATE staff_accounts SET status = ? WHERE id = ?').run(status, s.id);
+  res.json(publicStaff(db.prepare('SELECT * FROM staff_accounts WHERE id = ?').get(s.id)));
+});
+
+app.delete('/api/admin/staff/:id', requirePerm('staff:manage'), (req, res) => {
+  if (!db.prepare('SELECT id FROM staff_accounts WHERE id = ?').get(req.params.id)) return bad(res, 'Staff account not found.', 404);
+  db.prepare('DELETE FROM staff_accounts WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+app.post('/api/admin/change-password', requirePerm('admin:only'), (req, res) => {
   const { current_password, new_password } = req.body || {};
   const admin = db.prepare('SELECT * FROM admins WHERE id = ?').get(req.session.adminId);
   if (!admin || !verifyPassword(String(current_password || ''), admin.password_hash)) {
@@ -386,7 +533,7 @@ app.post('/api/admin/change-password', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
-// ================= ADMIN: DASHBOARD =================
+// ================= ADMIN: DASHBOARD & ANALYTICS =================
 app.get('/api/admin/stats', requireAdmin, (req, res) => {
   const one = (sql) => db.prepare(sql).get().n;
   const recentBookings = db.prepare(`SELECT b.id, b.booking_code, b.customer_name, b.total_amount, b.status, b.pickup_date, c.brand AS car_brand, c.name AS car_name
@@ -398,13 +545,119 @@ app.get('/api/admin/stats', requireAdmin, (req, res) => {
     maintenance_cars: one("SELECT COUNT(*) AS n FROM cars WHERE status = 'maintenance'"),
     total_bookings: one('SELECT COUNT(*) AS n FROM bookings'),
     pending_bookings: one("SELECT COUNT(*) AS n FROM bookings WHERE status = 'pending'"),
+    open_quotes: one("SELECT COUNT(*) AS n FROM quotes WHERE status = 'open'"),
+    unpaid_invoices: one("SELECT COUNT(*) AS n FROM invoices WHERE status = 'unpaid'"),
     active_bookings: one("SELECT COUNT(*) AS n FROM bookings WHERE status IN ('confirmed','active')"),
     total_customers: one('SELECT COUNT(*) AS n FROM customers'),
     unread_messages: one("SELECT COUNT(*) AS n FROM contact_messages WHERE status = 'new'"),
+    total_reviews: one("SELECT COUNT(*) AS n FROM reviews WHERE status = 'published'"),
     revenue: db.prepare(`SELECT COALESCE(SUM(total_amount),0) AS n FROM bookings WHERE status IN ('confirmed','active','completed')`).get().n,
     recent_bookings: recentBookings,
     recent_messages: recentMessages
   });
+});
+
+app.get('/api/admin/analytics', requireAdmin, (req, res) => {
+  const currentYear = new Date().getFullYear();
+  const year = Number(req.query.year) || currentYear;
+  const compareYear = Number(req.query.compareYear) || (year - 1);
+
+  const yearsRows = db.prepare(`SELECT DISTINCT CAST(substr(pickup_date, 1, 4) AS INTEGER) AS y FROM bookings ORDER BY y DESC`).all();
+  const yearSet = new Set([currentYear, currentYear - 1, ...yearsRows.map(r => r.y).filter(Boolean)]);
+  const availableYears = [...yearSet].sort((a, b) => b - a);
+
+  const monthlyQuery = db.prepare(`
+    SELECT substr(pickup_date, 6, 2) AS m,
+           COALESCE(SUM(total_amount), 0) AS revenue,
+           COUNT(*) AS bookings
+    FROM bookings
+    WHERE substr(pickup_date, 1, 4) = ? AND status IN ('confirmed','active','completed')
+    GROUP BY m
+  `);
+  const toMonthMap = (yr) => {
+    const map = {};
+    for (const row of monthlyQuery.all(String(yr))) map[row.m] = { revenue: round2(row.revenue), bookings: row.bookings };
+    return map;
+  };
+  const yMap = toMonthMap(year);
+  const cMap = toMonthMap(compareYear);
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const monthly = monthNames.map((label, idx) => {
+    const key = String(idx + 1).padStart(2, '0');
+    return {
+      month: label,
+      revenue: yMap[key]?.revenue || 0,
+      bookings: yMap[key]?.bookings || 0,
+      compare_revenue: cMap[key]?.revenue || 0,
+      compare_bookings: cMap[key]?.bookings || 0
+    };
+  });
+
+  const yearly = db.prepare(`
+    SELECT CAST(substr(pickup_date, 1, 4) AS INTEGER) AS year,
+           COALESCE(SUM(total_amount), 0) AS revenue,
+           COUNT(*) AS bookings
+    FROM bookings
+    WHERE status IN ('confirmed','active','completed')
+    GROUP BY year
+    ORDER BY year ASC
+  `).all().map(r => ({ year: r.year, revenue: round2(r.revenue), bookings: r.bookings }));
+
+  const byCar = db.prepare(`
+    SELECT c.id, c.brand || ' ' || c.name AS label, c.category,
+           COALESCE(SUM(CASE WHEN b.status IN ('confirmed','active','completed') THEN b.total_amount ELSE 0 END), 0) AS revenue,
+           COUNT(CASE WHEN b.status != 'cancelled' THEN b.id END) AS bookings,
+           COALESCE((SELECT ROUND(AVG(r.rating), 1) FROM reviews r WHERE r.car_id = c.id AND r.status = 'published'), 0) AS avg_rating,
+           (SELECT COUNT(*) FROM reviews r WHERE r.car_id = c.id AND r.status = 'published') AS review_count
+    FROM cars c
+    LEFT JOIN bookings b ON b.car_id = c.id
+    GROUP BY c.id
+    ORDER BY revenue DESC, bookings DESC
+  `).all().map(r => ({ ...clean(r), revenue: round2(r.revenue) }));
+
+  const byCategory = db.prepare(`
+    SELECT c.category,
+           COUNT(DISTINCT c.id) AS car_count,
+           COALESCE(SUM(CASE WHEN b.status IN ('confirmed','active','completed') THEN b.total_amount ELSE 0 END), 0) AS revenue,
+           COUNT(CASE WHEN b.status != 'cancelled' THEN b.id END) AS bookings
+    FROM cars c
+    LEFT JOIN bookings b ON b.car_id = c.id
+    GROUP BY c.category
+    ORDER BY revenue DESC
+  `).all().map(r => ({ ...clean(r), revenue: round2(r.revenue) }));
+
+  const byStatus = db.prepare(`
+    SELECT status, COUNT(*) AS count, COALESCE(SUM(total_amount), 0) AS revenue
+    FROM bookings GROUP BY status
+  `).all().map(r => ({ ...clean(r), revenue: round2(r.revenue) }));
+
+  res.json({ year, compareYear, availableYears, monthly, yearly, byCar, byCategory, byStatus });
+});
+
+// ================= ADMIN: REVIEWS =================
+app.get('/api/admin/reviews', requireAdmin, (req, res) => {
+  const rows = db.prepare(`
+    SELECT r.*, c.brand AS car_brand, c.name AS car_name
+    FROM reviews r JOIN cars c ON c.id = r.car_id
+    ORDER BY r.created_at DESC
+  `).all();
+  res.json(rows.map(clean));
+});
+
+app.patch('/api/admin/reviews/:id', requirePerm('reviews:write'), (req, res) => {
+  const rev = db.prepare('SELECT id FROM reviews WHERE id = ?').get(req.params.id);
+  if (!rev) return bad(res, 'Review not found.', 404);
+  const status = req.body.status;
+  if (!['published', 'hidden'].includes(status)) return bad(res, 'Invalid review status.');
+  db.prepare('UPDATE reviews SET status = ? WHERE id = ?').run(status, rev.id);
+  res.json({ ok: true, status });
+});
+
+app.delete('/api/admin/reviews/:id', requirePerm('reviews:write'), (req, res) => {
+  const rev = db.prepare('SELECT id FROM reviews WHERE id = ?').get(req.params.id);
+  if (!rev) return bad(res, 'Review not found.', 404);
+  db.prepare('DELETE FROM reviews WHERE id = ?').run(rev.id);
+  res.json({ ok: true });
 });
 
 // ================= ADMIN: CARS CRUD =================
@@ -431,7 +684,7 @@ function validateCar(b, partial = false) {
   return errs;
 }
 
-app.post('/api/admin/cars', requireAdmin, (req, res) => {
+app.post('/api/admin/cars', requirePerm('cars:write'), (req, res) => {
   const b = req.body || {};
   const errs = validateCar(b);
   if (errs.length) return bad(res, errs.join(' '));
@@ -445,7 +698,7 @@ app.post('/api/admin/cars', requireAdmin, (req, res) => {
   res.status(201).json(clean(db.prepare('SELECT * FROM cars WHERE id = ?').get(Number(info.lastInsertRowid))));
 });
 
-app.put('/api/admin/cars/:id', requireAdmin, (req, res) => {
+app.put('/api/admin/cars/:id', requirePerm('cars:write'), (req, res) => {
   const car = db.prepare('SELECT * FROM cars WHERE id = ?').get(req.params.id);
   if (!car) return bad(res, 'Car not found.', 404);
   const b = { ...car, ...req.body };
@@ -460,7 +713,7 @@ app.put('/api/admin/cars/:id', requireAdmin, (req, res) => {
   res.json(clean(db.prepare('SELECT * FROM cars WHERE id = ?').get(car.id)));
 });
 
-app.patch('/api/admin/cars/:id/status', requireAdmin, (req, res) => {
+app.patch('/api/admin/cars/:id/status', requirePerm('cars:write'), (req, res) => {
   const car = db.prepare('SELECT * FROM cars WHERE id = ?').get(req.params.id);
   if (!car) return bad(res, 'Car not found.', 404);
   const status = req.body.status;
@@ -469,7 +722,7 @@ app.patch('/api/admin/cars/:id/status', requireAdmin, (req, res) => {
   res.json({ ok: true, status });
 });
 
-app.patch('/api/admin/cars/:id/featured', requireAdmin, (req, res) => {
+app.patch('/api/admin/cars/:id/featured', requirePerm('cars:write'), (req, res) => {
   const car = db.prepare('SELECT * FROM cars WHERE id = ?').get(req.params.id);
   if (!car) return bad(res, 'Car not found.', 404);
   const featured = req.body.featured ? 1 : 0;
@@ -477,7 +730,7 @@ app.patch('/api/admin/cars/:id/featured', requireAdmin, (req, res) => {
   res.json({ ok: true, featured });
 });
 
-app.delete('/api/admin/cars/:id', requireAdmin, (req, res) => {
+app.delete('/api/admin/cars/:id', requirePerm('cars:write'), (req, res) => {
   const car = db.prepare('SELECT * FROM cars WHERE id = ?').get(req.params.id);
   if (!car) return bad(res, 'Car not found.', 404);
   const active = db.prepare(`SELECT COUNT(*) AS n FROM bookings WHERE car_id = ? AND status IN ('pending','confirmed','active')`).get(car.id).n;
@@ -497,12 +750,15 @@ app.get('/api/admin/bookings', requireAdmin, (req, res) => {
     const like = `%${q.trim()}%`;
     params.push(like, like, like);
   }
-  const rows = db.prepare(`SELECT b.*, c.name AS car_name, c.brand AS car_brand, c.image_url FROM bookings b
-    JOIN cars c ON c.id = b.car_id WHERE ${where.join(' AND ')} ORDER BY b.created_at DESC`).all(...params);
+  const rows = db.prepare(`SELECT b.*, c.name AS car_name, c.brand AS car_brand, c.image_url,
+    (SELECT i.id FROM invoices i WHERE i.booking_id = b.id LIMIT 1) AS invoice_id,
+    (SELECT i.invoice_no FROM invoices i WHERE i.booking_id = b.id LIMIT 1) AS invoice_no,
+    (SELECT i.status FROM invoices i WHERE i.booking_id = b.id LIMIT 1) AS invoice_status
+    FROM bookings b JOIN cars c ON c.id = b.car_id WHERE ${where.join(' AND ')} ORDER BY b.created_at DESC`).all(...params);
   res.json(rows.map(clean));
 });
 
-app.patch('/api/admin/bookings/:id/status', requireAdmin, (req, res) => {
+app.patch('/api/admin/bookings/:id/status', requirePerm('bookings:write'), (req, res) => {
   const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(req.params.id);
   if (!booking) return bad(res, 'Booking not found.', 404);
   const status = req.body.status;
@@ -511,7 +767,7 @@ app.patch('/api/admin/bookings/:id/status', requireAdmin, (req, res) => {
   res.json({ ok: true, status });
 });
 
-app.put('/api/admin/bookings/:id', requireAdmin, (req, res) => {
+app.put('/api/admin/bookings/:id', requirePerm('bookings:write'), (req, res) => {
   const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(req.params.id);
   if (!booking) return bad(res, 'Booking not found.', 404);
   const { status, pickup_location, notes } = req.body || {};
@@ -525,11 +781,186 @@ app.put('/api/admin/bookings/:id', requireAdmin, (req, res) => {
   res.json(clean(db.prepare('SELECT * FROM bookings WHERE id = ?').get(booking.id)));
 });
 
-app.delete('/api/admin/bookings/:id', requireAdmin, (req, res) => {
+app.delete('/api/admin/bookings/:id', requirePerm('bookings:write'), (req, res) => {
   const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(req.params.id);
   if (!booking) return bad(res, 'Booking not found.', 404);
   db.prepare('DELETE FROM bookings WHERE id = ?').run(booking.id);
   res.json({ ok: true });
+});
+
+// ================= ADMIN: QUOTES, INVOICES & POS APPROVAL =================
+function makeInvoiceForBooking(booking, method = '', reference = '', status = 'unpaid') {
+  const car = db.prepare('SELECT brand, name FROM cars WHERE id = ?').get(booking.car_id) || {};
+  const info = db.prepare(`INSERT INTO invoices
+    (invoice_no, booking_id, booking_code, customer_name, customer_email, customer_phone, car_label,
+     pickup_date, return_date, total_days, subtotal, vat, total_amount, status, payment_method, payment_reference,
+     paid_at, due_date, notes, created_by)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    '', booking.id, booking.booking_code, booking.customer_name, booking.customer_email, booking.customer_phone,
+    `${car.brand || ''} ${car.name || ''}`.trim(), booking.pickup_date, booking.return_date, booking.total_days,
+    booking.subtotal, booking.vat, booking.total_amount, status, method, reference,
+    status === 'paid' ? new Date().toISOString() : null,
+    new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10), '', 'admin'
+  );
+  const id = Number(info.lastInsertRowid);
+  const no = `INV-${new Date().getFullYear()}-${String(id).padStart(4, '0')}`;
+  db.prepare('UPDATE invoices SET invoice_no = ? WHERE id = ?').run(no, id);
+  return db.prepare('SELECT * FROM invoices WHERE id = ?').get(id);
+}
+
+app.get('/api/admin/quotes', requireAdmin, (req, res) => {
+  const rows = db.prepare(`SELECT q.*, c.brand AS car_brand, c.name AS car_name
+    FROM quotes q LEFT JOIN cars c ON c.id = q.car_id ORDER BY q.created_at DESC`).all();
+  res.json(rows.map(r => ({ ...clean(r), add_ons: JSON.parse(r.add_ons || '{}') })));
+});
+
+app.post('/api/admin/quotes', requireAdmin, (req, res) => {
+  const b = req.body || {};
+  const car = db.prepare('SELECT * FROM cars WHERE id = ?').get(b.car_id);
+  if (!car) return bad(res, 'Car not found.', 404);
+  if (!b.customer_name || String(b.customer_name).trim().length < 2) return bad(res, 'Please enter the customer name.');
+  if (!isEmail(b.customer_email)) return bad(res, 'Please enter a valid customer email.');
+  if (!isDate(b.pickup_date) || !isDate(b.return_date)) return bad(res, 'Invalid dates. Use YYYY-MM-DD.');
+  if (b.return_date <= b.pickup_date) return bad(res, 'Return date must be after the pickup date.');
+  const settings = getSettings();
+  const addOns = {};
+  for (const k of Object.keys(getAddonsConfig(settings))) addOns[k] = !!(b.add_ons && b.add_ons[k]);
+  const q = priceQuote(car, b.pickup_date, b.return_date, addOns, settings);
+  const validUntil = isDate(b.valid_until) ? b.valid_until : new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+  const info = db.prepare(`INSERT INTO quotes
+    (quote_no, customer_name, customer_email, customer_phone, car_id, pickup_date, return_date, total_days,
+     add_ons, subtotal, vat, total_amount, valid_until, notes, status, created_by)
+    VALUES ('',?,?,?,?,?,?,?,?,?,?,?,?,?,'open',?)`).run(
+    String(b.customer_name).trim(), String(b.customer_email).trim(), String(b.customer_phone || '').trim(),
+    car.id, b.pickup_date, b.return_date, q.days, JSON.stringify(addOns), q.subtotal, q.vat, q.total,
+    validUntil, String(b.notes || '').trim(), 'admin'
+  );
+  const id = Number(info.lastInsertRowid);
+  db.prepare('UPDATE quotes SET quote_no = ? WHERE id = ?').run(`Q-${new Date().getFullYear()}-${String(id).padStart(4, '0')}`, id);
+  const row = db.prepare(`SELECT q.*, c.brand AS car_brand, c.name AS car_name FROM quotes q
+    LEFT JOIN cars c ON c.id = q.car_id WHERE q.id = ?`).get(id);
+  res.status(201).json({ ...clean(row), add_ons: JSON.parse(row.add_ons) });
+});
+
+app.delete('/api/admin/quotes/:id', requirePerm('quotes:delete'), (req, res) => {
+  if (!db.prepare('SELECT id FROM quotes WHERE id = ?').get(req.params.id)) return bad(res, 'Quote not found.', 404);
+  db.prepare('DELETE FROM quotes WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+app.post('/api/admin/quotes/:id/convert', requireAdmin, (req, res) => {
+  const quote = db.prepare('SELECT * FROM quotes WHERE id = ?').get(req.params.id);
+  if (!quote) return bad(res, 'Quote not found.', 404);
+  if (quote.status !== 'open') return bad(res, 'Only open quotes can be converted.', 409);
+  const car = db.prepare('SELECT * FROM cars WHERE id = ?').get(quote.car_id);
+  if (!car) return bad(res, 'The quoted car no longer exists.', 409);
+  if (car.status !== 'available') return bad(res, `This car is currently ${car.status}.`, 409);
+  if (overlaps(car.id, quote.pickup_date, quote.return_date)) return bad(res, 'This car is already booked for the quoted dates.', 409);
+  try {
+    const booking = db.transaction(() => {
+      const info = db.prepare(`INSERT INTO bookings
+        (booking_code, car_id, customer_id, customer_name, customer_email, customer_phone, license_ref,
+         pickup_location, pickup_date, return_date, total_days, add_ons, subtotal, vat, total_amount, status, notes)
+        VALUES (?,?,NULL,?,?,?,'','Main Office',?,?,?,?,?,?,?,'pending',?)`).run(
+        bookingCode(), car.id, quote.customer_name, quote.customer_email, quote.customer_phone,
+        quote.pickup_date, quote.return_date, quote.total_days, quote.add_ons,
+        quote.subtotal, quote.vat, quote.total_amount, quote.notes || ''
+      );
+      const id = Number(info.lastInsertRowid);
+      db.prepare("UPDATE quotes SET status = 'converted', converted_booking_id = ? WHERE id = ?").run(id, quote.id);
+      return db.prepare('SELECT * FROM bookings WHERE id = ?').get(id);
+    })();
+    res.status(201).json({ booking: clean(booking), quote: clean(db.prepare('SELECT * FROM quotes WHERE id = ?').get(quote.id)) });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'Could not convert quote.' });
+  }
+});
+
+app.get('/api/admin/invoices', requireAdmin, (req, res) => {
+  res.json(db.prepare('SELECT * FROM invoices ORDER BY created_at DESC').all().map(clean));
+});
+
+app.post('/api/admin/invoices', requirePerm('invoices:write'), (req, res) => {
+  const b = req.body || {};
+  if (b.booking_id) {
+    const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(b.booking_id);
+    if (!booking) return bad(res, 'Booking not found.', 404);
+    if (db.prepare('SELECT id FROM invoices WHERE booking_id = ?').get(booking.id)) {
+      return bad(res, 'An invoice already exists for this booking.', 409);
+    }
+    return res.status(201).json(clean(makeInvoiceForBooking(booking)));
+  }
+  if (!b.customer_name || String(b.customer_name).trim().length < 2) return bad(res, 'Please enter the client name.');
+  const description = String(b.description || b.car_label || '').trim();
+  if (!description) return bad(res, 'Please enter the item or service description.');
+  const amount = Number(b.total_amount);
+  if (!Number.isFinite(amount) || amount < 0) return bad(res, 'Please enter a valid amount.');
+  const vatRate = Math.max(0, Number(getSettings().vat_rate) || 0) / 100;
+  const total = round2(amount);
+  const subtotal = round2(total / (1 + vatRate));
+  const vat = round2(total - subtotal);
+  const today = new Date().toISOString().slice(0, 10);
+  const info = db.prepare(`INSERT INTO invoices
+    (invoice_no, booking_id, booking_code, customer_name, customer_email, customer_phone, car_label,
+     pickup_date, return_date, total_days, subtotal, vat, total_amount, status, payment_method, payment_reference,
+     paid_at, due_date, notes, created_by)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    '', null, 'WALK-IN', String(b.customer_name).trim(), String(b.customer_email || '').trim().toLowerCase(),
+    String(b.customer_phone || '').trim(), description,
+    isDate(b.pickup_date) ? b.pickup_date : today,
+    isDate(b.return_date) ? b.return_date : today,
+    Math.max(1, Number(b.total_days) || 1), subtotal, vat, total,
+    'unpaid', '', '', null,
+    isDate(b.due_date) ? b.due_date : new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+    String(b.notes || '').trim(), (sessionActor(req) || {}).name || 'admin'
+  );
+  const id = Number(info.lastInsertRowid);
+  db.prepare('UPDATE invoices SET invoice_no = ? WHERE id = ?').run(`INV-${new Date().getFullYear()}-${String(id).padStart(4, '0')}`, id);
+  res.status(201).json(clean(db.prepare('SELECT * FROM invoices WHERE id = ?').get(id)));
+});
+
+app.patch('/api/admin/invoices/:id/pay', requireAdmin, (req, res) => {
+  const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
+  if (!invoice) return bad(res, 'Invoice not found.', 404);
+  if (invoice.status === 'paid') return bad(res, 'This invoice has already been paid.', 409);
+  const method = String((req.body || {}).payment_method || '').trim();
+  if (!method) return bad(res, 'Please select a payment method.');
+  const reference = String((req.body || {}).payment_reference || '').trim();
+  db.prepare("UPDATE invoices SET status = 'paid', payment_method = ?, payment_reference = ?, paid_at = datetime('now') WHERE id = ?")
+    .run(method, reference, invoice.id);
+  res.json(clean(db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoice.id)));
+});
+
+app.delete('/api/admin/invoices/:id', requirePerm('invoices:delete'), (req, res) => {
+  if (!db.prepare('SELECT id FROM invoices WHERE id = ?').get(req.params.id)) return bad(res, 'Invoice not found.', 404);
+  db.prepare('DELETE FROM invoices WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+app.post('/api/admin/bookings/:id/approve', requireAdmin, (req, res) => {
+  const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(req.params.id);
+  if (!booking) return bad(res, 'Booking not found.', 404);
+  if (booking.status !== 'pending') return bad(res, 'Only pending bookings can be approved.', 409);
+  const method = String((req.body || {}).payment_method || '').trim();
+  if (!method) return bad(res, 'Please select a payment method.');
+  const reference = String((req.body || {}).payment_reference || '').trim();
+  try {
+    const result = db.transaction(() => {
+      let invoice = db.prepare('SELECT * FROM invoices WHERE booking_id = ?').get(booking.id);
+      if (!invoice) invoice = makeInvoiceForBooking(booking, method, reference, 'paid');
+      else {
+        if (invoice.status === 'paid') return { invoice, alreadyPaid: true };
+        db.prepare("UPDATE invoices SET status = 'paid', payment_method = ?, payment_reference = ?, paid_at = datetime('now') WHERE id = ?")
+          .run(method, reference, invoice.id);
+        invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoice.id);
+      }
+      db.prepare("UPDATE bookings SET status = 'confirmed' WHERE id = ?").run(booking.id);
+      return { invoice, alreadyPaid: false };
+    })();
+    res.json({ ok: true, invoice: clean(result.invoice), booking: clean(db.prepare('SELECT * FROM bookings WHERE id = ?').get(booking.id)) });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'Could not approve booking.' });
+  }
 });
 
 // ================= ADMIN: CUSTOMERS =================
@@ -546,7 +977,7 @@ app.get('/api/admin/customers', requireAdmin, (req, res) => {
   res.json(rows.map(clean));
 });
 
-app.patch('/api/admin/customers/:id/status', requireAdmin, (req, res) => {
+app.patch('/api/admin/customers/:id/status', requirePerm('customers:write'), (req, res) => {
   const cust = db.prepare('SELECT id FROM customers WHERE id = ?').get(req.params.id);
   if (!cust) return bad(res, 'Customer not found.', 404);
   const status = req.body.status;
@@ -555,7 +986,7 @@ app.patch('/api/admin/customers/:id/status', requireAdmin, (req, res) => {
   res.json({ ok: true, status });
 });
 
-app.delete('/api/admin/customers/:id', requireAdmin, (req, res) => {
+app.delete('/api/admin/customers/:id', requirePerm('customers:write'), (req, res) => {
   const cust = db.prepare('SELECT id FROM customers WHERE id = ?').get(req.params.id);
   if (!cust) return bad(res, 'Customer not found.', 404);
   db.prepare('DELETE FROM customers WHERE id = ?').run(cust.id);
@@ -571,7 +1002,7 @@ app.get('/api/admin/messages', requireAdmin, (req, res) => {
   res.json(rows.map(clean));
 });
 
-app.patch('/api/admin/messages/:id', requireAdmin, (req, res) => {
+app.patch('/api/admin/messages/:id', requirePerm('messages:write'), (req, res) => {
   const msg = db.prepare('SELECT * FROM contact_messages WHERE id = ?').get(req.params.id);
   if (!msg) return bad(res, 'Message not found.', 404);
   const { status, admin_notes } = req.body || {};
@@ -581,7 +1012,7 @@ app.patch('/api/admin/messages/:id', requireAdmin, (req, res) => {
   res.json(clean(db.prepare('SELECT * FROM contact_messages WHERE id = ?').get(msg.id)));
 });
 
-app.delete('/api/admin/messages/:id', requireAdmin, (req, res) => {
+app.delete('/api/admin/messages/:id', requirePerm('messages:write'), (req, res) => {
   const msg = db.prepare('SELECT id FROM contact_messages WHERE id = ?').get(req.params.id);
   if (!msg) return bad(res, 'Message not found.', 404);
   db.prepare('DELETE FROM contact_messages WHERE id = ?').run(msg.id);
@@ -593,7 +1024,7 @@ app.get('/api/admin/settings', requireAdmin, (req, res) => {
   res.json(getSettings());
 });
 
-app.put('/api/admin/settings', requireAdmin, (req, res) => {
+app.put('/api/admin/settings', requirePerm('settings:write'), (req, res) => {
   const body = req.body || {};
   const upsert = db.prepare(`INSERT INTO site_settings (key, value, updated_at)
     VALUES (?, ?, datetime('now'))

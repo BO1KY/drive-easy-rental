@@ -1,144 +1,117 @@
 # DriveEasy Rentals — Full-Stack Car Rental Web Application
 
-A complete, responsive car rental system with a customer storefront and a protected admin panel.
-Built with **Node.js + Express** and vanilla HTML5 / CSS3 / JavaScript (ES6+) — no external database
-server required (data is persisted to a local JSON file).
+A complete, responsive car rental system with a customer storefront, client account portal and a protected
+Admin Control Center. Built with **Node.js + Express** and vanilla HTML/CSS/JS; data lives in a local
+SQLite database using Node's built-in `node:sqlite` driver (no external database server).
 
 ## Features
 
 **Customer site**
 
-- Landing page showcasing the business: hero date search, fleet grid (photo, specs, colour, live `Available / Booked / Maintenance` badges, star ratings)
-- All prices are in **NAD (Namibian Dollar)** and include **15% VAT** — the advertised rate is the final shelf price
-- Filter by category, transmission, min seats, max price + live search by make/model
-- Pickup & return dates drive **real-time availability** (overlapping bookings are excluded)
-- Car details modal with full specs (including colour), features, rental terms and customer reviews
-- Guests can **rate cars 1–5 stars and leave a comment**; ratings are averaged on cards and details
-- Booking flow with automatic duration / add-ons / VAT-inclusive total (verified again server-side)
-- Booking confirmation with unique reference code + **My Bookings** search by reference or email
-- **About Us**, **Contact Us** (messages land in the admin inbox) and **Register** account pages
-- **My Account** profile page: customers sign in, edit their details, change their password and view their own bookings
+- Multi-page site: Home (`/`), Book Now (`/book.html`), About, Contact, Register / My Account, My Booking lookup
+- Fleet grid with photos, specs, ratings, live availability and category/price/transmission/seat filters
+- All prices are in **NAD** with **15% VAT included** in the advertised daily rate (configurable in admin settings)
+- Booking flow computes duration, add-ons and VAT-inclusive totals; the server revalidates price and availability
+- Booking confirmation with a unique reference code; lookup by code or view bookings while signed in
+- Customer account portal: profile editing, password change, booking history, online cancellation of pending bookings
+- Signed-in clients can rate vehicles 1–5 stars; **reviews are published automatically**
 
-**Admin panel (`/admin.html`)**
+**Admin Control Center (`/admin.html`)**
 
-- Session-based login for admins (`admin` / `admin123`) **and** staff/manager accounts by email
-  (demo: `tomas@driveeasy.example` / `password123`, `ndapewa@driveeasy.example` / `password123`)
-- Role-based permissions enforced server-side:
-  - **Admin** — everything, including staff management
-  - **Manager** — cars, bookings, quotes, invoices and messages (no staff management)
-  - **Staff** — view fleet availability, create quotes, issue invoices, record payments and approve pending rentals;
-    cannot add/edit/delete cars or change arbitrary booking statuses
-- Dashboard: available cars, active rentals, pending approvals, monthly revenue, registered customers,
-  open quotes, unpaid invoices, messages, upcoming pickups, recent bookings, status bars and fleet utilisation
-- Staff management: add staff/manager accounts, change roles and delete accounts.
-  Customer accounts are self-service (My Account) and never appear in the admin panel
-- Car CRUD: edit anything — brand, model, category, year, daily rate, transmission, fuel, seats, doors, **colour**, status, image, description and features
-- Booking management: filter by status, search by code/customer, update status
-  (cancel/complete frees the car automatically — availability is always derived from bookings)
-- **Quotations**: build a quote with live VAT-inclusive preview, print/save as PDF, then convert it to a booking
-- **Tax invoices**: generate an invoice for any booking, mark it paid (payment method + date), print/save as PDF;
-  staff can only approve a pending rental once its invoice is marked paid
-- Messages inbox: read and delete contact-form submissions (deletion is manager/admin only)
+- Intentionally **not linked** from customer pages — open by typing `/admin.html` in the browser
+- Session login for `admin` / `admin123`, plus staff and manager accounts (by email or username)
+- Role permissions enforced server-side:
+  - **Admin** — everything, including staff management and admin password changes
+  - **Manager** — all operational features, but cannot manage staff accounts
+  - **Staff** — fleet availability, quotations, invoices/payments and Point-of-Sale approval;
+    cannot add/edit cars, manage staff or change arbitrary booking statuses
+- Dashboard with live KPIs and charts: sales by month/year with year comparison, car comparison
+  (revenue/bookings/rating), category and booking-status donuts, recent bookings and messages
+- Fleet management: add/edit cars (brand, model, category, rate, specs, status, **image URL**, featured flag)
+- Booking management: search/filter, status changes, branch/notes editing, delete
+- Customer management: search, suspend/reactivate and delete accounts
+- Contact inbox and review moderation
+- **Quotations**: build a VAT-inclusive quote, print/save as PDF, convert to a booking
+- **Tax invoices**: generate invoices for online bookings **or walk-in clients**, mark as paid, print/save as PDF
+- **Point of Sale**: approving a pending rental opens a POS dialog; after payment the invoice is
+  automatically generated/paid and sent to print
 
 **Backend / data**
 
-- JSON datastore (`carrental-data.json`) created and seeded automatically on first run
-- Server-side validation and scrypt-hashed passwords; sessions are `httpOnly`
-- Prices are always computed from the stored daily rate — the client total is never trusted
+- SQLite database (`carrental.db`) created and seeded automatically on first run
+- Server-side validation, configurable site settings and scrypt-hashed passwords; sessions are `httpOnly`
+- Prices are always computed from stored rates — client totals are never trusted
 
 ## Quick Start
 
 ```bash
-# 1. Install dependencies
 npm install
-
-# 2. Start the server (creates + seeds carrental-data.json automatically on first run)
 npm start
-
-# 3. Open
-#    Customer site: http://localhost:3000
-#    Admin panel:   http://localhost:3000/admin.html   (admin / admin123)
 ```
 
-Requires **Node.js 18+** (tested on Node 26).
+- Customer site: http://localhost:3000
+- Admin Control Center: http://localhost:3000/admin.html (`admin` / `admin123`)
+- Staff demo: `tomas@driveeasy.example` / `password123`
+- Manager demo: `ndapewa@driveeasy.example` / `password123`
+
+Requires **Node.js 22.5+** (tested on Node 26).
 
 ## Project Structure
 
 ```
 CAR RENTAL/
-├── server.js            # Express app: public API + admin API + sessions
-├── db.js                # JSON store, seed data, scrypt password helpers
-├── carrental-data.json  # auto-created data file (cars, bookings, users, messages)
+├── server.js        # Express app: public API, admin API, auth, sessions, POS
+├── db.js            # SQLite schema, seed data, password helpers, site settings
+├── carrental.db     # auto-created SQLite database (git-ignored)
 ├── package.json
-├── index.html           # landing page: hero search, filters, fleet, how-it-works, lookup
-├── about.html           # About Us
-├── contact.html         # Contact Us (posts to /api/contact)
-├── register.html        # Customer account registration
-├── profile.html         # Customer account: sign in, profile, password, own bookings
-├── admin.html           # Admin panel (login + dashboard + cars + bookings + quotes + invoices + staff + messages)
-├── style.css            # full responsive stylesheet (includes printable quote/invoice layout)
-├── main.js              # customer logic (nav, filters, availability, booking, forms)
-├── admin.js             # admin logic (login/roles, stats, CRUD, quotes, invoices, documents, messages)
+├── index.html       # landing page
+├── book.html        # Book Now page
+├── about.html
+├── contact.html
+├── register.html    # registration, sign-in and professional client portal
+├── admin.html       # Admin Control Center
+├── style.css        # responsive stylesheet + printable document styles
+├── main.js          # shared site helpers and booking page logic
+├── admin.js         # dashboard charts, CRUD, quotes, invoices, POS, staff
 └── README.md
 ```
 
-## Data Model (`carrental-data.json`)
+## Data Model
 
-- `cars[]{id, name, brand, category, year, daily_rate, transmission, fuel_type, seats, doors, color, image_url, description, features, status, created_at}`
-- `bookings[]{id, booking_code, car_id, customer_name, customer_email, customer_phone, license_ref, pickup_date, return_date, total_days, add_ons, subtotal, vat, total_amount, status, notes, created_at}`
-- `users[]{id, name, email, phone, role (customer|staff|manager), password_hash, created_at}`
-- `admins[]{id, username, password_hash, created_at}`
-- `messages[]{id, name, email, phone, subject, message, created_at}`
-- `reviews[]{id, car_id, name, rating (1–5), comment, created_at}`
-- `quotes[]{id, quote_no, customer_name, customer_email, customer_phone, car_id, pickup_date, return_date, total_days, add_ons, subtotal, vat, total_amount, valid_until, notes, status (open|converted), created_by, created_at}`
-- `invoices[]{id, invoice_no, booking_id, booking_code, customer_name, customer_email, customer_phone, car_label, pickup_date, return_date, total_days, subtotal, vat, total_amount, status (unpaid|paid), payment_method, paid_at, due_date, notes, created_by, created_at}`
-- `seq{}` — id counters
+Tables in `carrental.db`: `cars`, `customers`, `bookings`, `contact_messages`, `reviews`, `admins`,
+`staff_accounts`, `site_settings`, `quotes`, `invoices`.
 
-Booking statuses: `pending`, `confirmed`, `active`, `completed`, `cancelled`.
-Car statuses: `available`, `maintenance`, `unavailable`.
+- Booking statuses: `pending`, `confirmed`, `active`, `completed`, `cancelled`
+- Car statuses: `available`, `maintenance`, `unavailable`
+- Staff roles: `staff`, `manager`; invoice statuses: `unpaid`, `paid`; quote statuses: `open`, `converted`, `cancelled`
 
 ## API Overview
 
-Public:
+Public: `GET /api/site`, `GET /api/cars`, `GET /api/cars/:id`, `GET/POST /api/cars/:id/reviews`,
+`POST /api/bookings`, `GET /api/bookings/lookup/:code`, `POST /api/contact`,
+`POST /api/auth/register|login|logout`, `GET /api/auth/me`, `PUT /api/auth/profile`,
+`PATCH /api/my-bookings/:id/cancel`.
 
-- `GET  /api/cars` — filter params: `category, transmission, seats, minPrice, maxPrice, search, pickup, ret`
-- `GET  /api/cars/:id`
-- `POST /api/bookings` — create booking (server-side pricing + overlap check)
-- `GET  /api/bookings/lookup/:code` · `GET /api/bookings/my?email=`
-- `POST /api/reviews` — rate a car 1–5 stars and leave a comment
-- `POST /api/contact` · `POST /api/users/register`
-- Customer accounts: `POST /api/users/login` · `POST /api/users/logout` · `GET/PUT /api/users/me`
-  · `PUT /api/users/me/password` · `GET /api/users/me/bookings`
+Admin (session + permissions): `POST /api/admin/login|logout`, `GET /api/admin/me`,
+`GET /api/admin/stats`, `GET /api/admin/analytics`, car CRUD, booking CRUD/status, customer
+management, message management, review moderation, `GET/PUT /api/admin/settings`,
+`POST /api/admin/change-password`, quote CRUD/convert, invoice CRUD/pay (including walk-in invoices),
+`POST /api/admin/bookings/:id/approve` (POS), and staff-account management.
 
-Admin (session required):
-
-- `POST /api/admin/login` (admin username or staff/manager email) · `POST /api/admin/logout` · `GET /api/admin/me`
-- `GET  /api/admin/stats`
-- `GET/POST /api/admin/cars` · `PUT/DELETE /api/admin/cars/:id` · `PATCH /api/admin/cars/:id/status`
-- `GET  /api/admin/bookings?status=&q=` · `PATCH /api/admin/bookings/:id/status`
-- Quotes: `GET/POST /api/admin/quotes` · `DELETE /api/admin/quotes/:id` · `POST /api/admin/quotes/:id/convert`
-- Invoices: `GET/POST /api/admin/invoices` · `PATCH /api/admin/invoices/:id/pay` · `DELETE /api/admin/invoices/:id`
-- `GET  /api/admin/messages` · `DELETE /api/admin/messages/:id`
-- Staff accounts: `GET/POST /api/admin/users` · `PATCH /api/admin/users/:id/role` · `DELETE /api/admin/users/:id`
-  (staff and manager roles only; admin-only permission `staff:manage`)
-
-Permissions are declared in `ROLE_PERMISSIONS` in `server.js`; every protected route checks a specific
-permission (`cars:write`, `bookings:any`, `bookings:approve`, `quotes:write`, `quotes:delete`,
-`invoices:write`, `invoices:delete`, `messages:delete`, `staff:manage`).
+Permissions are declared in `ROLE_PERMISSIONS` in `server.js` and checked per route with `requirePerm()`.
 
 ## Customization
 
 | Setting | Where |
 | --- | --- |
-| Currency / VAT / add-on prices | `server.js` (`ADDONS`, `VAT_RATE = 0.15`, VAT-inclusive) and `main.js` (`ADDONS`, `VAT_RATE`) |
-| Brand name & colors | HTML pages + `style.css` (`:root` variables) |
+| Currency, VAT, add-on prices, site copy | Admin → Site Settings (stored in `site_settings`) |
 | Port / session secret | env vars `PORT`, `SESSION_SECRET` |
-| Admin credentials | seeded in `db.js` via `hashPassword()`; change the password before deploying |
+| Default credentials | seeded in `db.js` via `hashPassword()` — change before deploying |
 
 ## Security Notes
 
 - Passwords hashed with Node `crypto.scrypt` (salted, timing-safe compare)
-- Source and data files (`server.js`, `db.js`, `carrental-data.json`, …) are blocked from static serving
-- Session cookie is `httpOnly`; every admin endpoint is protected server-side by role permissions
-- Staff approval is double-checked: only `pending → confirmed`, and only when a paid invoice exists
+- Backend source and database files are blocked from static serving
+- Session cookie is `httpOnly`; admin endpoints are protected server-side by role permissions
+- POS approval is transactional: only pending bookings can be approved and the invoice is paid in the same operation
 - Set a strong `SESSION_SECRET` and change the default admin password before deploying
