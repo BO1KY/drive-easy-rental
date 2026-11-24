@@ -44,12 +44,14 @@ const PAGES = {
   '/login': 'register.html',
   '/account': 'register.html',
   '/profile': 'register.html',
-  '/admin': 'admin.html'
+  '/admin': 'admin.html',
+  '/admin-login': 'admin-login.html'
 };
 for (const [route, file] of Object.entries(PAGES)) {
   app.get(route, (req, res) => res.sendFile(path.join(STATIC_DIR, file)));
 }
 app.use(express.static(STATIC_DIR));
+app.use('/api', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 
 // ---------- constants ----------
 const CATEGORIES = ['Sedan', 'SUV', 'Hatchback', 'Van/Truck', 'Luxury'];
@@ -73,12 +75,18 @@ function getAddonsConfig(settings) {
   };
 }
 
-function overlaps(carId, pickup, ret) {
-  const row = db.prepare(`SELECT COUNT(*) AS n FROM bookings
+function overlapCount(carId, pickup, ret) {
+  return db.prepare(`SELECT COUNT(*) AS n FROM bookings
     WHERE car_id = ? AND status IN ('pending','confirmed','active')
-      AND pickup_date < ? AND return_date > ?`).get(carId, ret, pickup);
-  return row.n > 0;
+      AND pickup_date < ? AND return_date > ?`).get(carId, ret, pickup).n;
 }
+function bookedNowCount(carId) {
+  const today = new Date().toISOString().slice(0, 10);
+  return db.prepare(`SELECT COUNT(*) AS n FROM bookings
+    WHERE car_id = ? AND status IN ('pending','confirmed','active')
+      AND pickup_date <= ? AND return_date >= ?`).get(carId, today, today).n;
+}
+const carUnits = (car) => Math.max(1, Number(car && car.quantity) || 1);
 
 function priceQuote(car, pickup, ret, addOns, settings) {
   const days = daysBetween(pickup, ret);
@@ -99,21 +107,39 @@ function bookingCode() {
 }
 
 // ---------- auth middlewares ----------
-const ROLE_PERMISSIONS = {
+const PERMISSION_CATALOG = [
+  'view_dashboard', 'view_revenue', 'view_cars', 'cars:write', 'view_bookings', 'bookings:write',
+  'bookings:approve', 'quotes:write', 'quotes:delete', 'invoices:write', 'invoices:delete',
+  'view_messages', 'messages:write', 'view_reviews', 'reviews:write', 'view_customers',
+  'customers:write', 'view_settings', 'settings:write', 'staff:manage'
+];
+const ROLE_DEFAULT_PERMISSIONS = {
   admin: ['*'],
-  manager: ['cars:write', 'bookings:write', 'quotes:write', 'quotes:delete',
-    'invoices:write', 'invoices:delete', 'messages:write', 'reviews:write',
-    'customers:write', 'settings:write'],
-  staff: ['quotes:write', 'invoices:write', 'bookings:approve']
+  manager: PERMISSION_CATALOG.filter(p => p !== 'staff:manage'),
+  staff: [
+    'view_cars', 'view_bookings', 'bookings:approve',
+    'quotes:write', 'invoices:write', 'view_messages', 'view_reviews'
+  ]
 };
+function parsePermissions(raw) {
+  try {
+    const arr = typeof raw === 'string' ? JSON.parse(raw || '[]') : raw;
+    return Array.isArray(arr) ? arr.filter(p => PERMISSION_CATALOG.includes(p)) : [];
+  } catch { return []; }
+}
 function sessionActor(req) {
   if (!req.session) return null;
   if (req.session.adminId) {
-    return { id: req.session.adminId, name: req.session.adminUsername || 'admin', role: 'admin' };
+    return { id: req.session.adminId, name: req.session.adminUsername || 'admin', role: 'admin',
+      permissions: ROLE_DEFAULT_PERMISSIONS.admin };
   }
   if (req.session.staffId) {
-    const s = db.prepare('SELECT id, full_name, role, status FROM staff_accounts WHERE id = ?').get(req.session.staffId);
-    if (s && s.status === 'active') return { id: s.id, name: s.full_name, role: s.role };
+    const s = db.prepare('SELECT id, full_name, role, status, permissions FROM staff_accounts WHERE id = ?').get(req.session.staffId);
+    if (s && s.status === 'active') {
+      const stored = parsePermissions(s.permissions);
+      return { id: s.id, name: s.full_name, role: s.role,
+        permissions: stored.length ? stored : ROLE_DEFAULT_PERMISSIONS[s.role] || [] };
+    }
   }
   return null;
 }
@@ -125,7 +151,7 @@ function requirePerm(perm) {
   return (req, res, next) => {
     const a = sessionActor(req);
     if (!a) return res.status(401).json({ error: 'Admin login required.' });
-    const perms = ROLE_PERMISSIONS[a.role] || [];
+    const perms = a.permissions || [];
     if (!perms.includes('*') && !perms.includes(perm)) {
       return res.status(403).json({ error: 'You do not have permission to perform this action.' });
     }
@@ -181,33 +207,23 @@ app.get('/api/cars', (req, res) => {
     params.push(q, q, q);
   }
 
-  let availabilityJoin = '';
-  if (isDate(pickup) && isDate(ret) && ret > pickup) {
-    availabilityJoin = `AND c.id NOT IN (
-      SELECT car_id FROM bookings
-      WHERE status IN ('pending','confirmed','active')
-        AND pickup_date < ? AND return_date > ?)`;
-    params.push(ret, pickup);
-  }
-
   const rows = db.prepare(`
     SELECT c.*,
-      CASE WHEN EXISTS (
-        SELECT 1 FROM bookings b WHERE b.car_id = c.id
-          AND b.status IN ('pending','confirmed','active')
-          AND b.pickup_date <= date('now') AND b.return_date >= date('now')
-      ) THEN 1 ELSE 0 END AS booked_now,
       COALESCE((SELECT ROUND(AVG(r.rating), 1) FROM reviews r WHERE r.car_id = c.id AND r.status = 'published'), 0) AS avg_rating,
       (SELECT COUNT(*) FROM reviews r WHERE r.car_id = c.id AND r.status = 'published') AS review_count
-    FROM cars c WHERE ${where.join(' AND ')} ${availabilityJoin}
+    FROM cars c WHERE ${where.join(' AND ')}
     ORDER BY c.featured DESC, c.daily_rate ASC`).all(...params);
 
-  const available = (car) => {
-    if (car.status !== 'available') return false;
-    if (isDate(pickup) && isDate(ret) && ret > pickup) return !overlaps(car.id, pickup, ret);
-    return !car.booked_now;
-  };
-  res.json(rows.map(({ booked_now, ...car }) => ({ ...car, is_available: available(car) })));
+  const hasDates = isDate(pickup) && isDate(ret) && ret > pickup;
+  res.json(rows.map((car) => {
+    const units = carUnits(car);
+    const unitsBooked = hasDates ? overlapCount(car.id, pickup, ret) : bookedNowCount(car.id);
+    const unitsAvailable = Math.max(0, units - unitsBooked);
+    return {
+      ...car, quantity: units, units_booked: unitsBooked, units_available: unitsAvailable,
+      is_available: car.status === 'available' && unitsAvailable > 0
+    };
+  }));
 });
 
 app.get('/api/cars/:id', (req, res) => {
@@ -219,8 +235,15 @@ app.get('/api/cars/:id', (req, res) => {
   const busyRanges = db.prepare(`SELECT pickup_date, return_date, status FROM bookings
     WHERE car_id = ? AND status IN ('pending','confirmed','active')
       AND return_date >= date('now') ORDER BY pickup_date`).all(car.id);
-  const bookedNow = busyRanges.some(r => r.pickup_date <= new Date().toISOString().slice(0, 10));
-  res.json({ ...car, is_available: car.status === 'available' && !bookedNow, busy_ranges: busyRanges.map(clean) });
+  const hasDates = isDate(req.query.pickup) && isDate(req.query.ret) && req.query.ret > req.query.pickup;
+  const units = carUnits(car);
+  const unitsBooked = hasDates ? overlapCount(car.id, req.query.pickup, req.query.ret) : bookedNowCount(car.id);
+  const unitsAvailable = Math.max(0, units - unitsBooked);
+  res.json({
+    ...car, quantity: units, units_booked: unitsBooked, units_available: unitsAvailable,
+    is_available: car.status === 'available' && unitsAvailable > 0,
+    busy_ranges: busyRanges.map(clean)
+  });
 });
 
 app.get('/api/cars/:id/reviews', (req, res) => {
@@ -283,8 +306,9 @@ app.post('/api/bookings', (req, res) => {
   const customerId = req.session && req.session.customerId ? req.session.customerId : null;
 
   const tx = db.transaction(() => {
-    if (overlaps(car.id, b.pickup_date, b.return_date)) {
-      const err = new Error('Sorry, this car was just booked for the selected dates. Please pick different dates.');
+    const used = overlapCount(car.id, b.pickup_date, b.return_date);
+    if (used >= carUnits(car)) {
+      const err = new Error('All units of this vehicle are booked for the selected dates. Please choose different dates.');
       err.status = 409;
       throw err;
     }
@@ -310,6 +334,58 @@ app.post('/api/bookings', (req, res) => {
       booking: clean(booking),
       quote: { days: result.days, subtotal: result.subtotal, vat: result.vat, total: result.total }
     });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message || 'Booking failed.' });
+  }
+});
+
+app.post('/api/bookings/multiple', (req, res) => {
+  const b = req.body || {};
+  const required = ['customer_name', 'customer_email', 'customer_phone', 'pickup_date', 'return_date'];
+  for (const f of required) {
+    if (!b[f] || String(b[f]).trim() === '') return bad(res, `Missing required field: ${f}`);
+  }
+  if (!isEmail(b.customer_email)) return bad(res, 'Invalid email address.');
+  if (!isDate(b.pickup_date) || !isDate(b.return_date)) return bad(res, 'Invalid dates.');
+  if (b.pickup_date < new Date().toISOString().slice(0, 10)) return bad(res, 'Pickup date cannot be in the past.');
+  if (b.return_date <= b.pickup_date) return bad(res, 'Return date must be after pickup date.');
+  const items = Array.isArray(b.items) ? b.items : [];
+  if (!items.length) return bad(res, 'Add at least one vehicle to book.');
+  const settings = getSettings();
+  const addonsCfg = getAddonsConfig(settings);
+  const customerId = req.session && req.session.customerId ? req.session.customerId : null;
+  const created = [];
+  const quotes = [];
+  try {
+    db.transaction(() => {
+      for (const it of items) {
+        const car = db.prepare('SELECT * FROM cars WHERE id = ?').get(it.car_id);
+        if (!car) { const e = new Error('One of the selected vehicles was not found.'); e.status = 404; throw e; }
+        if (car.status !== 'available') { const e = new Error(`${car.brand} ${car.name} is currently ${car.status}.`); e.status = 400; throw e; }
+        if (overlapCount(car.id, b.pickup_date, b.return_date) >= carUnits(car)) {
+          const e = new Error(`All units of ${car.brand} ${car.name} are booked for those dates.`);
+          e.status = 409;
+          throw e;
+        }
+        const addOns = {};
+        for (const k of Object.keys(addonsCfg)) addOns[k] = !!(it.add_ons && it.add_ons[k]);
+        const q = priceQuote(car, b.pickup_date, b.return_date, addOns, settings);
+        const info = db.prepare(`INSERT INTO bookings
+          (booking_code, car_id, customer_id, customer_name, customer_email, customer_phone, license_ref,
+           pickup_location, pickup_date, return_date, total_days, add_ons, subtotal, vat, total_amount, status, notes)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',?)`).run(
+          bookingCode(), car.id, customerId, String(b.customer_name).trim(),
+          String(b.customer_email).trim().toLowerCase(), String(b.customer_phone).trim(),
+          String(b.license_ref || '').trim(), String(b.pickup_location || 'Main Office').trim(),
+          b.pickup_date, b.return_date, q.days, JSON.stringify(addOns),
+          q.subtotal, q.vat, q.total, String(b.notes || '').trim()
+        );
+        created.push(db.prepare(`SELECT b.*, c.name AS car_name, c.brand AS car_brand
+          FROM bookings b JOIN cars c ON c.id = b.car_id WHERE b.id = ?`).get(Number(info.lastInsertRowid)));
+        quotes.push(q);
+      }
+    })();
+    res.status(201).json({ bookings: created.map(clean), quotes });
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message || 'Booking failed.' });
   }
@@ -444,12 +520,14 @@ app.post('/api/admin/login', (req, res) => {
   if (admin && verifyPassword(pass, admin.password_hash)) {
     req.session.adminId = admin.id;
     req.session.adminUsername = admin.username;
-    return res.json({ username: admin.username, name: 'Administrator', role: 'admin', permissions: ROLE_PERMISSIONS.admin });
+    return res.json({ username: admin.username, name: 'Administrator', role: 'admin', permissions: ROLE_DEFAULT_PERMISSIONS.admin });
   }
   const staff = db.prepare('SELECT * FROM staff_accounts WHERE lower(email) = ? OR lower(username) = ?').get(ident, ident);
   if (staff && staff.status === 'active' && verifyPassword(pass, staff.password_hash)) {
     req.session.staffId = staff.id;
-    return res.json({ username: staff.username, name: staff.full_name, role: staff.role, permissions: ROLE_PERMISSIONS[staff.role] });
+    const stored = parsePermissions(staff.permissions);
+    return res.json({ username: staff.username, name: staff.full_name, role: staff.role,
+      permissions: stored.length ? stored : ROLE_DEFAULT_PERMISSIONS[staff.role] });
   }
   return bad(res, 'Invalid username or password.', 401);
 });
@@ -465,12 +543,14 @@ app.post('/api/admin/logout', (req, res) => {
 
 app.get('/api/admin/me', requireAdmin, (req, res) => {
   const a = sessionActor(req);
-  res.json({ username: a.name, name: a.name, role: a.role, permissions: ROLE_PERMISSIONS[a.role] || [] });
+  res.json({ username: a.name, name: a.name, role: a.role, permissions: a.permissions || [] });
 });
 
 const publicStaff = (s) => ({
   id: s.id, full_name: s.full_name, email: s.email, username: s.username,
-  role: s.role, status: s.status, created_at: s.created_at
+  role: s.role, status: s.status, created_at: s.created_at,
+  permissions: parsePermissions(s.permissions),
+  has_custom_permissions: parsePermissions(s.permissions).length > 0
 });
 
 app.get('/api/admin/staff', requirePerm('staff:manage'), (req, res) => {
@@ -514,6 +594,17 @@ app.patch('/api/admin/staff/:id/status', requirePerm('staff:manage'), (req, res)
   res.json(publicStaff(db.prepare('SELECT * FROM staff_accounts WHERE id = ?').get(s.id)));
 });
 
+app.patch('/api/admin/staff/:id/permissions', requirePerm('staff:manage'), (req, res) => {
+  const s = db.prepare('SELECT * FROM staff_accounts WHERE id = ?').get(req.params.id);
+  if (!s) return bad(res, 'Staff account not found.', 404);
+  const list = (req.body || {}).permissions;
+  if (!Array.isArray(list)) return bad(res, 'Permissions must be a list.');
+  const badPerm = list.find(p => !PERMISSION_CATALOG.includes(p));
+  if (badPerm) return bad(res, `Unknown permission: ${badPerm}.`);
+  db.prepare('UPDATE staff_accounts SET permissions = ? WHERE id = ?').run(JSON.stringify([...new Set(list)]), s.id);
+  res.json(publicStaff(db.prepare('SELECT * FROM staff_accounts WHERE id = ?').get(s.id)));
+});
+
 app.delete('/api/admin/staff/:id', requirePerm('staff:manage'), (req, res) => {
   if (!db.prepare('SELECT id FROM staff_accounts WHERE id = ?').get(req.params.id)) return bad(res, 'Staff account not found.', 404);
   db.prepare('DELETE FROM staff_accounts WHERE id = ?').run(req.params.id);
@@ -534,7 +625,7 @@ app.post('/api/admin/change-password', requirePerm('admin:only'), (req, res) => 
 });
 
 // ================= ADMIN: DASHBOARD & ANALYTICS =================
-app.get('/api/admin/stats', requireAdmin, (req, res) => {
+app.get('/api/admin/stats', requirePerm('view_revenue'), (req, res) => {
   const one = (sql) => db.prepare(sql).get().n;
   const recentBookings = db.prepare(`SELECT b.id, b.booking_code, b.customer_name, b.total_amount, b.status, b.pickup_date, c.brand AS car_brand, c.name AS car_name
     FROM bookings b JOIN cars c ON c.id = b.car_id ORDER BY b.created_at DESC LIMIT 5`).all().map(clean);
@@ -557,7 +648,7 @@ app.get('/api/admin/stats', requireAdmin, (req, res) => {
   });
 });
 
-app.get('/api/admin/analytics', requireAdmin, (req, res) => {
+app.get('/api/admin/analytics', requirePerm('view_revenue'), (req, res) => {
   const currentYear = new Date().getFullYear();
   const year = Number(req.query.year) || currentYear;
   const compareYear = Number(req.query.compareYear) || (year - 1);
@@ -635,7 +726,7 @@ app.get('/api/admin/analytics', requireAdmin, (req, res) => {
 });
 
 // ================= ADMIN: REVIEWS =================
-app.get('/api/admin/reviews', requireAdmin, (req, res) => {
+app.get('/api/admin/reviews', requirePerm('view_reviews'), (req, res) => {
   const rows = db.prepare(`
     SELECT r.*, c.brand AS car_brand, c.name AS car_name
     FROM reviews r JOIN cars c ON c.id = r.car_id
@@ -661,7 +752,7 @@ app.delete('/api/admin/reviews/:id', requirePerm('reviews:write'), (req, res) =>
 });
 
 // ================= ADMIN: CARS CRUD =================
-app.get('/api/admin/cars', requireAdmin, (req, res) => {
+app.get('/api/admin/cars', requirePerm('view_cars'), (req, res) => {
   const rows = db.prepare(`SELECT c.*,
       (SELECT COUNT(*) FROM bookings b WHERE b.car_id = c.id AND b.status IN ('pending','confirmed','active')
         AND b.return_date >= date('now')) AS active_bookings
@@ -681,6 +772,10 @@ function validateCar(b, partial = false) {
   if (!partial || b.seats !== undefined) { const s = +b.seats; if (!Number.isInteger(s) || s < 1 || s > 60) errs.push('Invalid seats.'); }
   if (b.doors !== undefined) { const d = +b.doors; if (!Number.isInteger(d) || d < 1 || d > 10) errs.push('Invalid doors.'); }
   if (b.status !== undefined && !CAR_STATUSES.includes(b.status)) errs.push('Invalid status.');
+  if (b.quantity !== undefined) {
+    const qty = +b.quantity;
+    if (!Number.isInteger(qty) || qty < 1 || qty > 100) errs.push('Quantity must be between 1 and 100.');
+  }
   return errs;
 }
 
@@ -688,12 +783,13 @@ app.post('/api/admin/cars', requirePerm('cars:write'), (req, res) => {
   const b = req.body || {};
   const errs = validateCar(b);
   if (errs.length) return bad(res, errs.join(' '));
-  const info = db.prepare(`INSERT INTO cars (name, brand, category, year, daily_rate, transmission, fuel_type, seats, doors, image_url, description, features, status, featured)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+  const info = db.prepare(`INSERT INTO cars (name, brand, category, year, daily_rate, transmission, fuel_type, seats, doors, image_url, description, features, status, featured, quantity)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     String(b.name).trim(), String(b.brand).trim(), b.category, +b.year, +b.daily_rate, b.transmission,
     String(b.fuel_type).trim(), +b.seats, +(b.doors || 4), String(b.image_url || '').trim(),
     String(b.description || '').trim(), String(b.features || '').trim(),
-    CAR_STATUSES.includes(b.status) ? b.status : 'available', b.featured ? 1 : 0
+    CAR_STATUSES.includes(b.status) ? b.status : 'available', b.featured ? 1 : 0,
+    Math.max(1, +b.quantity || 1)
   );
   res.status(201).json(clean(db.prepare('SELECT * FROM cars WHERE id = ?').get(Number(info.lastInsertRowid))));
 });
@@ -704,11 +800,12 @@ app.put('/api/admin/cars/:id', requirePerm('cars:write'), (req, res) => {
   const b = { ...car, ...req.body };
   const errs = validateCar(b);
   if (errs.length) return bad(res, errs.join(' '));
-  db.prepare(`UPDATE cars SET name=?, brand=?, category=?, year=?, daily_rate=?, transmission=?, fuel_type=?, seats=?, doors=?, image_url=?, description=?, features=?, status=?, featured=? WHERE id=?`).run(
+  db.prepare(`UPDATE cars SET name=?, brand=?, category=?, year=?, daily_rate=?, transmission=?, fuel_type=?, seats=?, doors=?, image_url=?, description=?, features=?, status=?, featured=?, quantity=? WHERE id=?`).run(
     String(b.name).trim(), String(b.brand).trim(), b.category, +b.year, +b.daily_rate, b.transmission,
     String(b.fuel_type).trim(), +b.seats, +b.doors, String(b.image_url || '').trim(),
     String(b.description || '').trim(), String(b.features || '').trim(),
-    CAR_STATUSES.includes(b.status) ? b.status : car.status, b.featured ? 1 : 0, car.id
+    CAR_STATUSES.includes(b.status) ? b.status : car.status, b.featured ? 1 : 0,
+    Math.max(1, +b.quantity || 1), car.id
   );
   res.json(clean(db.prepare('SELECT * FROM cars WHERE id = ?').get(car.id)));
 });
@@ -740,7 +837,7 @@ app.delete('/api/admin/cars/:id', requirePerm('cars:write'), (req, res) => {
 });
 
 // ================= ADMIN: BOOKINGS =================
-app.get('/api/admin/bookings', requireAdmin, (req, res) => {
+app.get('/api/admin/bookings', requirePerm('view_bookings'), (req, res) => {
   const { status, q } = req.query;
   const where = ['1=1'];
   const params = [];
@@ -808,7 +905,7 @@ function makeInvoiceForBooking(booking, method = '', reference = '', status = 'u
   return db.prepare('SELECT * FROM invoices WHERE id = ?').get(id);
 }
 
-app.get('/api/admin/quotes', requireAdmin, (req, res) => {
+app.get('/api/admin/quotes', requirePerm('quotes:write'), (req, res) => {
   const rows = db.prepare(`SELECT q.*, c.brand AS car_brand, c.name AS car_name
     FROM quotes q LEFT JOIN cars c ON c.id = q.car_id ORDER BY q.created_at DESC`).all();
   res.json(rows.map(r => ({ ...clean(r), add_ons: JSON.parse(r.add_ons || '{}') })));
@@ -848,14 +945,16 @@ app.delete('/api/admin/quotes/:id', requirePerm('quotes:delete'), (req, res) => 
   res.json({ ok: true });
 });
 
-app.post('/api/admin/quotes/:id/convert', requireAdmin, (req, res) => {
+app.post('/api/admin/quotes/:id/convert', requirePerm('quotes:write'), (req, res) => {
   const quote = db.prepare('SELECT * FROM quotes WHERE id = ?').get(req.params.id);
   if (!quote) return bad(res, 'Quote not found.', 404);
   if (quote.status !== 'open') return bad(res, 'Only open quotes can be converted.', 409);
   const car = db.prepare('SELECT * FROM cars WHERE id = ?').get(quote.car_id);
   if (!car) return bad(res, 'The quoted car no longer exists.', 409);
   if (car.status !== 'available') return bad(res, `This car is currently ${car.status}.`, 409);
-  if (overlaps(car.id, quote.pickup_date, quote.return_date)) return bad(res, 'This car is already booked for the quoted dates.', 409);
+  if (overlapCount(car.id, quote.pickup_date, quote.return_date) >= carUnits(car)) {
+    return bad(res, 'All units of this car are booked for the quoted dates.', 409);
+  }
   try {
     const booking = db.transaction(() => {
       const info = db.prepare(`INSERT INTO bookings
@@ -876,7 +975,7 @@ app.post('/api/admin/quotes/:id/convert', requireAdmin, (req, res) => {
   }
 });
 
-app.get('/api/admin/invoices', requireAdmin, (req, res) => {
+app.get('/api/admin/invoices', requirePerm('invoices:write'), (req, res) => {
   res.json(db.prepare('SELECT * FROM invoices ORDER BY created_at DESC').all().map(clean));
 });
 
@@ -937,7 +1036,105 @@ app.delete('/api/admin/invoices/:id', requirePerm('invoices:delete'), (req, res)
   res.json({ ok: true });
 });
 
-app.post('/api/admin/bookings/:id/approve', requireAdmin, (req, res) => {
+app.post('/api/admin/pos/sale', requirePerm('invoices:write'), (req, res) => {
+  const b = req.body || {};
+  const client = b.client || {};
+  if (!client.name || String(client.name).trim().length < 2) return bad(res, 'Please enter the client name.');
+  const items = Array.isArray(b.items) ? b.items : [];
+  if (!items.length) return bad(res, 'Choose at least one vehicle.');
+  if (!isDate(b.pickup_date) || !isDate(b.return_date) || b.return_date <= b.pickup_date) {
+    return bad(res, 'Choose valid pickup and return dates.');
+  }
+  const payments = Array.isArray(b.payments) ? b.payments : [];
+  if (!payments.length) return bad(res, 'Add at least one payment.');
+  const settings = getSettings();
+  const addonsCfg = getAddonsConfig(settings);
+  const cleanPayments = [];
+  let paidTotal = 0, cashTendered = 0, cashChange = 0;
+  for (const p of payments) {
+    const method = String(p.method || '').trim();
+    const amount = Number(p.amount);
+    if (!method) return bad(res, 'Select a payment method.');
+    if (!Number.isFinite(amount) || amount <= 0) return bad(res, 'Each payment needs a valid amount.');
+    let tendered = null, change = 0;
+    if (method.toLowerCase() === 'cash') {
+      tendered = Number(p.tendered);
+      if (!Number.isFinite(tendered) || tendered < amount) return bad(res, 'Cash tendered must cover the cash portion.');
+      change = round2(tendered - amount);
+      cashTendered = round2(cashTendered + tendered);
+      cashChange = round2(cashChange + change);
+    }
+    paidTotal = round2(paidTotal + amount);
+    cleanPayments.push({ method, amount: round2(amount), reference: String(p.reference || '').trim(), tendered, change });
+  }
+
+  let subtotal = 0, vat = 0, total = 0;
+  const priced = [];
+  for (const it of items) {
+    const car = db.prepare('SELECT * FROM cars WHERE id = ?').get(it.car_id);
+    if (!car) return bad(res, 'One of the chosen vehicles was not found.', 404);
+    if (car.status !== 'available') return bad(res, `${car.brand} ${car.name} is ${car.status}.`, 400);
+    if (overlapCount(car.id, b.pickup_date, b.return_date) >= carUnits(car)) {
+      return bad(res, `All units of ${car.brand} ${car.name} are booked for those dates.`, 409);
+    }
+    const addOns = {};
+    for (const k of Object.keys(addonsCfg)) addOns[k] = !!(it.add_ons && it.add_ons[k]);
+    const q = priceQuote(car, b.pickup_date, b.return_date, addOns, settings);
+    subtotal = round2(subtotal + q.subtotal);
+    vat = round2(vat + q.vat);
+    total = round2(total + q.total);
+    priced.push({ car, addOns, quote: q });
+  }
+  if (paidTotal + 0.01 < total) return bad(res, `Payment is short by ${total - paidTotal}.`);
+
+  const company = String(client.company || '').trim();
+  const taxNo = String(client.tax_number || '').trim();
+  const wantsTax = !!client.wants_tax_invoice;
+  if (wantsTax && !company && !taxNo) return bad(res, 'Add company or tax number for a tax invoice.');
+  const actorName = (sessionActor(req) || {}).name || 'admin';
+  try {
+    const result = db.transaction(() => {
+      const bookings = [];
+      for (const p of priced) {
+        const info = db.prepare(`INSERT INTO bookings
+          (booking_code, car_id, customer_id, customer_name, customer_email, customer_phone, license_ref,
+           pickup_location, pickup_date, return_date, total_days, add_ons, subtotal, vat, total_amount, status, notes)
+          VALUES (?,?,NULL,?,?,?,?,?,?,?,?,?,?,?,?,'confirmed',?)`).run(
+          bookingCode(), p.car.id, String(client.name).trim(), String(client.email || '').trim().toLowerCase(),
+          String(client.phone || '').trim(), String(client.license || '').trim(), 'Main Office',
+          b.pickup_date, b.return_date, p.quote.days, JSON.stringify(p.addOns),
+          p.quote.subtotal, p.quote.vat, p.quote.total, String(b.notes || '').trim()
+        );
+        bookings.push(db.prepare(`SELECT b.*, c.name AS car_name, c.brand AS car_brand
+          FROM bookings b JOIN cars c ON c.id = b.car_id WHERE b.id = ?`).get(Number(info.lastInsertRowid)));
+      }
+      const label = priced.map(p => `${p.car.brand} ${p.car.name}`).join(', ');
+      const noteParts = [wantsTax ? `TAX INVOICE — ${client.name}` : '', company ? `Company: ${company}` : '', taxNo ? `Tax No: ${taxNo}` : ''].filter(Boolean);
+      const info = db.prepare(`INSERT INTO invoices
+        (invoice_no, booking_id, booking_code, customer_name, customer_email, customer_phone, car_label,
+         pickup_date, return_date, total_days, subtotal, vat, total_amount, status, payment_method, payment_reference,
+         paid_at, due_date, notes, created_by, amount_tendered, change_amount, client_company, client_tax_no,
+         wants_tax_invoice, payments)
+        VALUES ('',NULL,?,?,?,?,?,?,?,?,?,?,?,'paid',?,?,datetime('now'),?,?,?,?,?,?,?,?,?)`).run(
+        'POS-' + Date.now().toString(36).toUpperCase(), String(client.name).trim(),
+        String(client.email || '').trim().toLowerCase(), String(client.phone || '').trim(), label,
+        b.pickup_date, b.return_date, Math.max(...priced.map(p => p.quote.days)),
+        subtotal, vat, total, cleanPayments.map(p => p.method).join(' + '),
+        cleanPayments.map(p => p.reference).filter(Boolean).join(' · '),
+        b.pickup_date, noteParts.join(' | '), actorName,
+        cashTendered || null, cashChange, company, taxNo, wantsTax ? 1 : 0, JSON.stringify(cleanPayments)
+      );
+      const id = Number(info.lastInsertRowid);
+      db.prepare('UPDATE invoices SET invoice_no = ? WHERE id = ?').run(`INV-${new Date().getFullYear()}-${String(id).padStart(4, '0')}`, id);
+      return { bookings, invoice: db.prepare('SELECT * FROM invoices WHERE id = ?').get(id) };
+    })();
+    res.status(201).json({ bookings: result.bookings.map(clean), invoice: clean(result.invoice) });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'Could not complete sale.' });
+  }
+});
+
+app.post('/api/admin/bookings/:id/approve', requirePerm('bookings:approve'), (req, res) => {
   const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(req.params.id);
   if (!booking) return bad(res, 'Booking not found.', 404);
   if (booking.status !== 'pending') return bad(res, 'Only pending bookings can be approved.', 409);
@@ -995,7 +1192,7 @@ app.post('/api/admin/bookings/:id/approve', requireAdmin, (req, res) => {
 });
 
 // ================= ADMIN: CUSTOMERS =================
-app.get('/api/admin/customers', requireAdmin, (req, res) => {
+app.get('/api/admin/customers', requirePerm('view_customers'), (req, res) => {
   const q = req.query.q ? `%${req.query.q.trim()}%` : null;
   const sql = q
     ? `SELECT c.id, c.full_name, c.email, c.phone, c.license_ref, c.address, c.status, c.created_at,
@@ -1025,7 +1222,7 @@ app.delete('/api/admin/customers/:id', requirePerm('customers:write'), (req, res
 });
 
 // ================= ADMIN: CONTACT MESSAGES =================
-app.get('/api/admin/messages', requireAdmin, (req, res) => {
+app.get('/api/admin/messages', requirePerm('view_messages'), (req, res) => {
   const { status } = req.query;
   const rows = status && MESSAGE_STATUSES.includes(status)
     ? db.prepare('SELECT * FROM contact_messages WHERE status = ? ORDER BY created_at DESC').all(status)
@@ -1051,7 +1248,7 @@ app.delete('/api/admin/messages/:id', requirePerm('messages:write'), (req, res) 
 });
 
 // ================= ADMIN: SITE SETTINGS ("CONTROL EVERYTHING") =================
-app.get('/api/admin/settings', requireAdmin, (req, res) => {
+app.get('/api/admin/settings', requirePerm('view_settings'), (req, res) => {
   res.json(getSettings());
 });
 

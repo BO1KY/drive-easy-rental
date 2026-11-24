@@ -212,7 +212,7 @@
           <div class="car-img">
             <img src="${esc(car.image_url)}" alt="${esc(car.brand)} ${esc(car.name)}" loading="lazy">
             <span class="badge ${car.status === 'available' ? (car.is_available ? 'available' : 'booked') : esc(car.status)}">
-              ${car.status === 'available' ? (car.is_available ? 'Available' : 'Booked') : esc(car.status)}
+              ${car.status === 'available' ? (car.is_available ? ((Number(car.quantity) > 1 && car.units_available != null) ? `${car.units_available} of ${car.quantity} available` : 'Available') : 'Booked') : esc(car.status)}
             </span>
             <span class="badge category">${esc(car.category)}</span>
           </div>

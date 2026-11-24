@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS cars (
   features TEXT DEFAULT '',
   status TEXT NOT NULL DEFAULT 'available' CHECK (status IN ('available','maintenance','unavailable')),
   featured INTEGER NOT NULL DEFAULT 0 CHECK (featured IN (0,1)),
+  quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity >= 1),
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -180,13 +181,20 @@ CREATE INDEX IF NOT EXISTS idx_reviews_car       ON reviews(car_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_status    ON reviews(status);
 `);
 
+const carColumns = new Set(db.prepare('PRAGMA table_info(cars)').all().map(r => r.name));
+if (!carColumns.has('quantity')) db.exec('ALTER TABLE cars ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1');
+
+const staffColumns = new Set(db.prepare('PRAGMA table_info(staff_accounts)').all().map(r => r.name));
+if (!staffColumns.has('permissions')) db.exec("ALTER TABLE staff_accounts ADD COLUMN permissions TEXT DEFAULT ''");
+
 const invoiceColumns = new Set(db.prepare('PRAGMA table_info(invoices)').all().map(r => r.name));
 for (const [name, decl] of [
   ['amount_tendered', 'REAL'],
   ['change_amount', 'REAL'],
   ['client_company', "TEXT DEFAULT ''"],
   ['client_tax_no', "TEXT DEFAULT ''"],
-  ['wants_tax_invoice', 'INTEGER DEFAULT 0']
+  ['wants_tax_invoice', 'INTEGER DEFAULT 0'],
+  ['payments', "TEXT DEFAULT '[]'"]
 ]) {
   if (!invoiceColumns.has(name)) db.exec(`ALTER TABLE invoices ADD COLUMN ${name} ${decl}`);
 }
@@ -228,6 +236,8 @@ if (carCount === 0) {
 
   db.transaction(() => {
     for (const c of cars) insertCar.run(...c);
+    db.prepare('UPDATE cars SET quantity = 3 WHERE id = 1').run();
+    db.prepare('UPDATE cars SET quantity = 2 WHERE id = 7').run();
   })();
 }
 

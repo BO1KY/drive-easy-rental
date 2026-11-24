@@ -198,7 +198,10 @@ window.DriveEasy = (() => {
 
   function statusBadge(car) {
     if (car.status !== 'available') return `<span class="badge ${esc(car.status)}">${esc(car.status)}</span>`;
-    return car.is_available ? '<span class="badge available">Available</span>' : '<span class="badge booked">Booked</span>';
+    if (!car.is_available) return '<span class="badge booked">Booked</span>';
+    const qty = Number(car.quantity) || 1;
+    const left = car.units_available;
+    return `<span class="badge available">${qty > 1 && left != null ? `${left} of ${qty} available` : 'Available'}</span>`;
   }
 
   function renderCars(cars) {
@@ -223,6 +226,7 @@ window.DriveEasy = (() => {
             <span>${esc(car.fuel_type)}</span>
             <span>${car.seats} seats</span>
             <span>${car.doors} doors</span>
+            ${Number(car.quantity) > 1 ? `<span>${car.quantity} in fleet</span>` : ''}
           </div>
           <div class="car-features">${(car.features || '').split(',').filter(Boolean).slice(0, 4).map(esc).join(' · ')}</div>
           <div class="car-foot">
@@ -382,15 +386,65 @@ window.DriveEasy = (() => {
     }
   }
 
+  let bookingItems = [];
+  function collectBookingItems() {
+    return $$('#bookingItems .booking-item').map(row => {
+      const add_ons = {};
+      $$('.bk_addon', row).forEach(input => { add_ons[input.dataset.key] = input.checked; });
+      return { car_id: Number($('.bk_car', row).value), add_ons };
+    });
+  }
+  function renderBookingItems() {
+    const box = $('#bookingItems');
+    if (!box) return;
+    const options = pageState.cars.filter(c => c.is_available || bookingItems.some(i => i.car_id === c.id));
+    box.innerHTML = bookingItems.map((item, idx) => `
+      <div class="booking-item" data-index="${idx}">
+        <div class="grid-2">
+          <div class="field"><label>Vehicle ${idx + 1}</label>
+            <select class="bk_car">
+              ${options.map(c => `<option value="${c.id}" ${c.id === item.car_id ? 'selected' : ''}>${esc(c.brand)} ${esc(c.name)} — ${money(c.daily_rate)}/day</option>`).join('')}
+            </select>
+          </div>
+          <div class="field"><label>Optional add-ons (per day)</label>
+            ${Object.entries(site.addons).map(([k, a]) => `
+              <label class="checkbox-row"><input type="checkbox" class="bk_addon" data-key="${esc(k)}" ${item.add_ons[k] ? 'checked' : ''}>
+                ${esc(a.label)}<span class="addon-price">+${money(a.price)}</span></label>`).join('')}
+          </div>
+        </div>
+        <button type="button" class="btn btn-ghost btn-sm" data-remove-item="${idx}" ${bookingItems.length === 1 ? 'disabled' : ''}>Remove vehicle</button>
+      </div>`).join('');
+
+    $$('#bookingItems .bk_car').forEach(sel => sel.addEventListener('change', () => {
+      const row = sel.closest('.booking-item');
+      const idx = Number(row.dataset.index);
+      bookingItems[idx].car_id = Number(sel.value);
+      renderQuote();
+    }));
+    $$('#bookingItems .bk_addon').forEach(input => input.addEventListener('change', () => {
+      const row = input.closest('.booking-item');
+      const idx = Number(row.dataset.index);
+      bookingItems[idx].add_ons[input.dataset.key] = input.checked;
+      renderQuote();
+    }));
+    $$('#bookingItems [data-remove-item]').forEach(btn => btn.addEventListener('click', () => {
+      if (bookingItems.length === 1) return;
+      bookingItems.splice(Number(btn.dataset.removeItem), 1);
+      renderBookingItems();
+      renderQuote();
+    }));
+  }
+
   function openBooking(id) {
     const car = pageState.cars.find(c => c.id === id);
     if (!car || !car.is_available) return;
     const d = pageState.dates || { pickup: todayPlus(1), ret: todayPlus(4) };
     const c = site.customer || {};
     const locs = site.locations || ['Main Office'];
+    bookingItems = [{ car_id: car.id, add_ons: {} }];
 
     openModal(`
-      <h2 id="modalTitle">Book: ${esc(car.brand)} ${esc(car.name)}</h2>
+      <h2 id="modalTitle">Book Your Vehicles</h2>
       <form id="bookingForm" novalidate>
         <div class="grid-2">
           <div class="field"><label>Pickup date *</label><input type="date" id="b_pickup" value="${esc(d.pickup)}" min="${todayPlus(0)}" required></div>
@@ -406,31 +460,30 @@ window.DriveEasy = (() => {
         </div>
         <div class="field"><label>Driver's license ref</label><input id="b_license" value="${esc(c.license_ref || '')}" placeholder="DL-12345"></div>
         <div class="field"><label>Pickup / drop-off notes</label><textarea id="b_notes" rows="2" placeholder="Flight number, arrival time, special requests…"></textarea></div>
-        <fieldset style="border:0;margin-bottom:.4rem">
-          <legend style="font-size:.85rem;font-weight:600;color:var(--muted);margin-bottom:.3rem">Optional add-ons (per day)</legend>
-          ${Object.entries(site.addons).map(([k, a]) => `
-            <label class="checkbox-row"><input type="checkbox" class="addon" data-key="${esc(k)}">
-              ${esc(a.label)}<span class="addon-price">+${money(a.price)}</span></label>`).join('')}
-        </fieldset>
+        <div class="field">
+          <label>Vehicles</label>
+          <div id="bookingItems"></div>
+          <button type="button" class="btn btn-ghost btn-sm" id="addBookingCar">+ Add another vehicle</button>
+        </div>
         <div class="price-breakdown" id="priceBreakdown"></div>
         <button class="btn btn-accent btn-lg btn-block" type="submit" id="submitBooking">Confirm Booking</button>
         <p class="muted small" style="text-align:center;margin-top:.5rem">Free cancellation while your booking is Pending.</p>
       </form>`);
 
-    const recalc = () => renderQuote(car);
-    $('#bookingForm').addEventListener('input', recalc);
-    $('#bookingForm').addEventListener('submit', submitBooking(car));
+    renderBookingItems();
+    $('#addBookingCar').addEventListener('click', () => {
+      const firstAvailable = pageState.cars.find(c => c.is_available && !bookingItems.some(i => i.car_id === c.id));
+      bookingItems.push({ car_id: firstAvailable ? firstAvailable.id : bookingItems[0].car_id, add_ons: {} });
+      renderBookingItems();
+      renderQuote();
+    });
+    $('#bookingForm').addEventListener('input', renderQuote);
+    $('#bookingForm').addEventListener('submit', submitBooking);
     $('#b_pickup').addEventListener('change', e => { $('#b_return').min = e.target.value; });
-    recalc();
+    renderQuote();
   }
 
-  function selectedAddons() {
-    const o = {};
-    $$('.addon').forEach(c => { o[c.dataset.key] = c.checked; });
-    return o;
-  }
-
-  function renderQuote(car) {
+  function renderQuote() {
     const p = $('#b_pickup').value, r = $('#b_return').value;
     const box = $('#priceBreakdown');
     if (!p || !r || r <= p) {
@@ -438,84 +491,94 @@ window.DriveEasy = (() => {
       return;
     }
     const days = daysBetween(p, r);
-    const addons = selectedAddons();
-    const addonSum = Object.keys(site.addons).reduce((s, k) => s + (addons[k] ? site.addons[k].price : 0), 0);
-    const total = (car.daily_rate + addonSum) * days;
     const vatRate = site.vatRate ?? 15;
-    const subtotal = total / (1 + vatRate / 100);
-    const vat = total - subtotal;
+    let total = 0, subtotal = 0, vat = 0;
+    const lines = [];
+    collectBookingItems().forEach(item => {
+      const car = pageState.cars.find(c => c.id === item.car_id);
+      if (!car) return;
+      const addonSum = Object.keys(site.addons).reduce((s, k) => s + (item.add_ons[k] ? site.addons[k].price : 0), 0);
+      const amount = (car.daily_rate + addonSum) * days;
+      total += amount;
+      subtotal += amount / (1 + vatRate / 100);
+      vat += amount - amount / (1 + vatRate / 100);
+      lines.push(`<div><span>${esc(car.brand)} ${esc(car.name)} × ${days} day(s)</span><span>${money(amount)}</span></div>`);
+      Object.keys(site.addons).filter(k => item.add_ons[k]).forEach(k => {
+        lines.push(`<div><span>${esc(site.addons[k].label)}</span><span>${money(site.addons[k].price * days)}</span></div>`);
+      });
+    });
     box.innerHTML = `
-      <div><span>${esc(car.brand)} ${esc(car.name)} × ${days} day${days > 1 ? 's' : ''}</span><span>${money(car.daily_rate * days)}</span></div>
-      ${Object.keys(site.addons).filter(k => addons[k]).map(k => `<div><span>${esc(site.addons[k].label)}</span><span>${money(site.addons[k].price * days)}</span></div>`).join('')}
+      ${lines.join('')}
+      <div><span>Subtotal (excl. VAT)</span><span>${money(subtotal)}</span></div>
       <div><span>VAT (${vatRate}%, included)</span><span>${money(vat)}</span></div>
       <div class="total"><span>Total (incl. VAT)</span><span>${money(total)}</span></div>`;
   }
 
-  function submitBooking(car) {
-    return async (e) => {
-      e.preventDefault();
-      const btn = $('#submitBooking');
-      const requiredIds = ['b_pickup', 'b_return', 'b_name', 'b_email', 'b_phone'];
-      let valid = true;
-      for (const id of requiredIds) {
-        const el = $('#' + id);
-        const ok = el.value.trim() !== '' && (id !== 'b_email' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(el.value.trim()));
-        el.classList.toggle('invalid', !ok);
-        if (!ok) valid = false;
-      }
-      if ($('#b_return').value <= $('#b_pickup').value) {
-        return toast('Return date must be after the pickup date.', 'error');
-      }
-      if (!valid) return toast('Please fill in all required fields correctly.', 'error');
+  async function submitBooking(e) {
+    e.preventDefault();
+    const btn = $('#submitBooking');
+    const requiredIds = ['b_pickup', 'b_return', 'b_name', 'b_email', 'b_phone'];
+    let valid = true;
+    for (const id of requiredIds) {
+      const el = $('#' + id);
+      const ok = el.value.trim() !== '' && (id !== 'b_email' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(el.value.trim()));
+      el.classList.toggle('invalid', !ok);
+      if (!ok) valid = false;
+    }
+    if ($('#b_return').value <= $('#b_pickup').value) return toast('Return date must be after the pickup date.', 'error');
+    if (!valid) return toast('Please fill in all required fields correctly.', 'error');
+    const items = collectBookingItems();
+    if (!items.length) return toast('Add at least one vehicle.', 'error');
 
-      btn.disabled = true; btn.textContent = 'Processing…';
-      try {
-        const res = await fetch('/api/bookings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            car_id: car.id,
-            customer_name: $('#b_name').value,
-            customer_email: $('#b_email').value,
-            customer_phone: $('#b_phone').value,
-            license_ref: $('#b_license').value,
-            pickup_location: $('#b_location').value,
-            pickup_date: $('#b_pickup').value,
-            return_date: $('#b_return').value,
-            add_ons: selectedAddons(),
-            notes: $('#b_notes').value
-          })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Booking failed.');
-        showConfirmation(data.booking);
-        loadCars();
-      } catch (err) {
-        toast(err.message, 'error');
-        btn.disabled = false; btn.textContent = 'Confirm Booking';
-      }
-    };
+    btn.disabled = true; btn.textContent = 'Processing…';
+    try {
+      const res = await fetch('/api/bookings/multiple', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items,
+          customer_name: $('#b_name').value,
+          customer_email: $('#b_email').value,
+          customer_phone: $('#b_phone').value,
+          license_ref: $('#b_license').value,
+          pickup_location: $('#b_location').value,
+          pickup_date: $('#b_pickup').value,
+          return_date: $('#b_return').value,
+          notes: $('#b_notes').value
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Booking failed.');
+      showConfirmation(data.bookings);
+      loadCars();
+    } catch (err) {
+      toast(err.message, 'error');
+      btn.disabled = false; btn.textContent = 'Confirm Booking';
+    }
   }
 
-  function showConfirmation(b) {
-    const addonObj = JSON.parse(b.add_ons || '{}');
-    const addonList = Object.entries(addonObj)
-      .filter(([, v]) => v)
-      .map(([k]) => (site.addons[k] ? site.addons[k].label : k))
-      .join(', ') || 'None';
+  function showConfirmation(bookings) {
+    const list = Array.isArray(bookings) ? bookings : [bookings];
+    const total = list.reduce((s, b) => s + Number(b.total_amount || 0), 0);
+    const codes = list.map(b => `<div class="big-code">${esc(b.booking_code)}</div>`).join('');
+    const vehicles = list.map(b => {
+      const addonObj = JSON.parse(b.add_ons || '{}');
+      const addonList = Object.entries(addonObj).filter(([, v]) => v)
+        .map(([k]) => (site.addons[k] ? site.addons[k].label : k)).join(', ') || 'None';
+      return `<div><span>${esc(b.car_brand || '')} ${esc(b.car_name || '')}</span><span>${money(b.total_amount)}</span></div>
+        <div class="muted small">Add-ons: ${esc(addonList)}</div>`;
+    }).join('');
     openModal(`
       <div class="confirm">
         <div class="check-circle">✓</div>
-        <h2>Booking Received!</h2>
-        <p class="muted">Your reservation is <strong>Pending</strong> confirmation. Save your booking code:</p>
-        <div class="big-code">${esc(b.booking_code)}</div>
+        <h2>${list.length > 1 ? 'Bookings Received!' : 'Booking Received!'}</h2>
+        <p class="muted">Your reservations are <strong>Pending</strong> confirmation. Save your booking codes:</p>
+        ${codes}
         <div class="price-breakdown" style="text-align:left">
-          <div><span>Vehicle</span><span>${esc(b.car_brand || '')} ${esc(b.car_name || '')}</span></div>
-          <div><span>Branch</span><span>${esc(b.pickup_location || 'Main Office')}</span></div>
-          <div><span>Dates</span><span>${esc(b.pickup_date)} → ${esc(b.return_date)} (${b.total_days}d)</span></div>
-          <div><span>Add-ons</span><span>${esc(addonList)}</span></div>
-          <div><span>VAT</span><span>${money(b.vat)}</span></div>
-          <div class="total"><span>Total</span><span>${money(b.total_amount)}</span></div>
+          ${vehicles}
+          <div><span>Branch</span><span>${esc(list[0].pickup_location || 'Main Office')}</span></div>
+          <div><span>Dates</span><span>${esc(list[0].pickup_date)} → ${esc(list[0].return_date)}</span></div>
+          <div class="total"><span>Total</span><span>${money(total)}</span></div>
         </div>
         <button class="btn btn-accent btn-lg" id="confirmDoneBtn">Done</button>
       </div>`);

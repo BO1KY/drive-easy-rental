@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Sign In — DriveEasy Rentals</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="index.html">
+      <img src="logo.jpg" alt="DriveEasy Rentals Logo" class="brand-logo">
+      <span data-brand>DriveEasy<span class="brand-accent">Rentals</span></span>
+    </a>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+    <nav class="main-nav" id="mainNav">
+      <a href="index.html">Home</a>
+      <a href="book.html">Book Now</a>
+      <a href="about.html">About Us</a>
+      <a href="contact.html">Contact Us</a>
+      <a href="register.html">My Account</a>
+    </nav>
+  </div>
+</header>
+
+<main class="page-main">
+  <section class="page-banner">
+    <div class="container">
+      <h1>Admin Control Center</h1>
+      <p>Authorised team access only.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <div class="auth-wrap card" id="adminAuthBox">
+        <div class="auth-tabs">
+          <button type="button" class="active" data-tab="admin">Administrator</button>
+          <button type="button" data-tab="staff">Staff / Manager</button>
+        </div>
+
+        <form id="adminSignInForm" novalidate>
+          <div class="field">
+            <label for="adminIdent">Username</label>
+            <input id="adminIdent" required autocomplete="username" placeholder="Administrator username">
+          </div>
+          <div class="field">
+            <label for="adminPass">Password</label>
+            <input id="adminPass" type="password" required autocomplete="current-password">
+          </div>
+          <button type="submit" class="btn btn-accent btn-lg btn-block" id="adminSignInBtn">Sign In</button>
+        </form>
+
+        <form id="staffSignInForm" novalidate hidden>
+          <div class="field">
+            <label for="staffIdent">Email or username</label>
+            <input id="staffIdent" type="text" required autocomplete="username" placeholder="you@driveeasy.example">
+          </div>
+          <div class="field">
+            <label for="staffPass">Password</label>
+            <input id="staffPass" type="password" required autocomplete="current-password">
+          </div>
+          <button type="submit" class="btn btn-accent btn-lg btn-block" id="staffSignInBtn">Sign In</button>
+        </form>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-bottom">
+      <span>© 2026 <span data-setting="site_name">DriveEasy</span> <span data-setting="site_accent">Rentals</span>.</span>
+      <span>Team Access</span>
+    </div>
+  </div>
+</footer>
+
+<div class="toast-container" id="toastContainer"></div>
+<script src="main.js"></script>
+<script>
+(() => {
+  const { $, $$, toast, loadSite } = window.DriveEasy;
+
+  $$('.auth-tabs button').forEach(btn => btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    $$('.auth-tabs button').forEach(b => b.classList.toggle('active', b === btn));
+    $('#adminSignInForm').hidden = tab !== 'admin';
+    $('#staffSignInForm').hidden = tab !== 'staff';
+  }));
+
+  async function signIn(ident, password, button) {
+    button.disabled = true;
+    button.textContent = 'Signing in…';
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: ident, password })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Sign in failed.');
+      toast('Welcome, ' + data.name);
+      window.location.href = '/admin.html';
+    } catch (err) {
+      toast(err.message, 'error');
+      button.disabled = false;
+      button.textContent = 'Sign In';
+    }
+  }
+
+  $('#adminSignInForm').addEventListener('submit', e => {
+    e.preventDefault();
+    signIn($('#adminIdent').value.trim(), $('#adminPass').value, $('#adminSignInBtn'));
+  });
+  $('#staffSignInForm').addEventListener('submit', e => {
+    e.preventDefault();
+    signIn($('#staffIdent').value.trim(), $('#staffPass').value, $('#staffSignInBtn'));
+  });
+
+  loadSite();
+})();
+</script>
+</body>
+</html>

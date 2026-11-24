@@ -6,12 +6,30 @@ let vatRate = 15;
 let AUTH = { name: 'admin', username: 'admin', role: 'admin', permissions: ['*'] };
 const can = (perm) => AUTH.permissions.includes('*') || AUTH.permissions.includes(perm);
 function applyRoleUI() {
-  const staffNav = $('.admin-nav [data-section="staff"]');
-  if (staffNav) staffNav.hidden = !can('staff:manage');
+  const nav = (section, perm) => {
+    const btn = $(`.admin-nav [data-section="${section}"]`);
+    if (btn) btn.hidden = !can(perm);
+  };
+  nav('dashboard', 'view_dashboard');
+  nav('cars', 'view_cars');
+  nav('bookings', 'view_bookings');
+  nav('quotes', 'quotes:write');
+  nav('invoices', 'invoices:write');
+  nav('staff', 'staff:manage');
+  nav('customers', 'view_customers');
+  nav('messages', 'view_messages');
+  nav('reviews', 'view_reviews');
+  nav('settings', 'view_settings');
   const addCar = $('#addCarBtn');
   if (addCar) addCar.hidden = !can('cars:write');
   const saveSettings = $('#saveSettingsBtn');
   if (saveSettings) saveSettings.hidden = !can('settings:write');
+  $$('.charts-grid').forEach(el => { el.hidden = !can('view_revenue'); });
+  const active = $('.admin-nav button.active');
+  if (active && active.hidden) {
+    const first = [...$$('.admin-nav button')].find(b => !b.hidden);
+    if (first) first.click();
+  }
 }
 let carsCache = [];
 let quotesCache = [];
@@ -20,6 +38,7 @@ const money = (n) => currencySymbol + Number(n || 0).toFixed(2);
 const CAR_STATUSES = { available: 'Available', maintenance: 'Maintenance', unavailable: 'Unavailable' };
 const BOOKING_STATUSES = ['pending', 'confirmed', 'active', 'completed', 'cancelled'];
 const MESSAGE_STATUSES = ['new', 'read', 'replied', 'archived'];
+const ADDON_LABELS = { child_seat: 'Child Seat', additional_driver: 'Extra Driver', insurance: 'Full Insurance' };
 const placeholderImg = (t) => `https://placehold.co/640x400/0f4c81/ffffff?text=${encodeURIComponent(t)}`;
 
 function esc(str) {
@@ -47,7 +66,7 @@ async function api(path, opts = {}) {
   });
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && !path.includes('/login')) {
-    showLogin();
+    redirectToLogin();
     throw new Error(data.error || 'Session expired');
   }
   if (!res.ok) throw new Error(data.error || 'Request failed.');
@@ -55,30 +74,12 @@ async function api(path, opts = {}) {
 }
 
 // ---------- Auth / Views ----------
-function showLogin() { $('#loginView').hidden = false; $('#appView').hidden = true; }
-function showApp() { $('#loginView').hidden = true; $('#appView').hidden = false; }
-
-$('#loginForm').addEventListener('submit', async e => {
-  e.preventDefault();
-  try {
-    const admin = await api('/api/admin/login', {
-      method: 'POST',
-      body: { username: $('#loginUser').value, password: $('#loginPass').value }
-    });
-    AUTH = { name: admin.name || admin.username, username: admin.username, role: admin.role || 'admin', permissions: admin.permissions || [] };
-    applyRoleUI();
-    $('#adminUser').textContent = `Signed in: ${AUTH.name} (${AUTH.role})`;
-    showApp();
-    window.scrollTo(0, 0);
-    refreshAll();
-    toast('Welcome back, ' + admin.username);
-  } catch (err) { toast(err.message, 'error'); }
-});
+function redirectToLogin() { window.location.replace('/admin-login.html'); }
+function showApp() { $('#appView').hidden = false; }
 
 $('#logoutBtn').addEventListener('click', async () => {
   await api('/api/admin/logout', { method: 'POST' });
-  showLogin();
-  toast('Logged out.');
+  redirectToLogin();
 });
 
 (async () => {
@@ -88,9 +89,10 @@ $('#logoutBtn').addEventListener('click', async () => {
     applyRoleUI();
     $('#adminUser').textContent = `Signed in: ${AUTH.name} (${AUTH.role})`;
     showApp();
+    window.scrollTo(0, 0);
     refreshAll();
   } catch {
-    showLogin();
+    redirectToLogin();
   }
 })();
 
@@ -104,8 +106,7 @@ $('#refreshAllBtn').addEventListener('click', () => { refreshAll(); toast('Refre
 
 async function refreshAll() {
   await loadSettings();
-  loadStats();
-  loadAnalytics();
+  if (can('view_revenue')) { loadStats(); loadAnalytics(); }
   loadCars();
   loadBookings();
   loadQuotes();
@@ -337,7 +338,7 @@ async function loadStats() {
       <div class="stat-card"><div class="num">${s.total_bookings}</div><div class="lbl">Total Bookings</div></div>
       <div class="stat-card accent"><div class="num">${s.pending_bookings}</div><div class="lbl">Pending Orders</div></div>
       <div class="stat-card"><div class="num">${s.active_bookings}</div><div class="lbl">Confirmed / Active</div></div>
-      <div class="stat-card"><div class="num">${money(s.revenue)}</div><div class="lbl">Est. Revenue</div></div>
+      <div class="stat-card" id="revenueCard"><div class="num">${money(s.revenue)}</div><div class="lbl">Est. Revenue</div></div>
       <div class="stat-card"><div class="num">${s.total_customers}</div><div class="lbl">Customers</div></div>
       <div class="stat-card accent"><div class="num">${s.unread_messages}</div><div class="lbl">New Messages</div></div>
 <div class="stat-card"><div class="num">${s.open_quotes}</div><div class="lbl">Open Quotes</div></div>
@@ -408,6 +409,7 @@ async function loadCars() {
         <td><img src="${esc(c.image_url)}" alt=""></td>
         <td><strong>${esc(c.name)}</strong><br><span class="muted small">${esc(c.brand)} · ${c.year}</span></td>
         <td>${esc(c.category)}</td>
+        <td><strong>${c.quantity || 1}</strong>${c.active_bookings ? `<br><span class="muted small">${c.active_bookings} booked</span>` : ''}</td>
         <td>${money(c.daily_rate)}/day</td>
         <td>${esc(c.transmission)}<br><span class="muted small">${esc(c.fuel_type)} · ${c.seats} seats</span></td>
         <td>${featuredCell}</td>
@@ -417,8 +419,8 @@ async function loadCars() {
     }).join('');
 
     $('#carsTable').innerHTML = `
-      <thead><tr><th>Photo</th><th>Vehicle</th><th>Category</th><th>Rate</th><th>Specs</th><th>Featured</th><th>Status</th>${editable ? '<th>Actions</th>' : ''}</tr></thead>
-      <tbody>${rows || `<tr><td colspan="${editable ? 8 : 7}" class="muted" style="text-align:center;padding:2rem">No cars yet.</td></tr>`}</tbody>`;
+      <thead><tr><th>Photo</th><th>Vehicle</th><th>Category</th><th>Units</th><th>Rate</th><th>Specs</th><th>Featured</th><th>Status</th>${editable ? '<th>Actions</th>' : ''}</tr></thead>
+      <tbody>${rows || `<tr><td colspan="${editable ? 9 : 8}" class="muted" style="text-align:center;padding:2rem">No cars yet.</td></tr>`}</tbody>`;
 
     $$('#carsTable .status-select').forEach(sel => sel.addEventListener('change', async () => {
       try {
@@ -466,6 +468,7 @@ function openCarForm(car) {
   $('#f_transmission').value = car?.transmission || 'Automatic';
   $('#f_fuel').value = car?.fuel_type || '';
   $('#f_seats').value = car?.seats || 5;
+  $('#f_quantity').value = car?.quantity || 1;
   $('#f_doors').value = car?.doors || 4;
   $('#f_status').value = car?.status || 'available';
   $('#f_image').value = car?.image_url || '';
@@ -491,6 +494,7 @@ $('#carForm').addEventListener('submit', async e => {
     transmission: $('#f_transmission').value,
     fuel_type: $('#f_fuel').value,
     seats: +$('#f_seats').value,
+    quantity: +$('#f_quantity').value,
     doors: +$('#f_doors').value,
     status: $('#f_status').value,
     image_url: $('#f_image').value.trim() || placeholderImg($('#f_brand').value + ' ' + $('#f_name').value),
@@ -1077,6 +1081,7 @@ const docBackdrop = $('#docModalBackdrop');
 function closeDoc() {
   docBackdrop.hidden = true;
   docBackdrop.classList.remove('printable');
+  document.title = 'Admin Control Center — DriveEasy Rentals';
 }
 $('#docCloseBtn').addEventListener('click', closeDoc);
 $('#docPrintBtn').addEventListener('click', () => window.print());
@@ -1144,8 +1149,9 @@ function renderDoc(kind, item) {
       </tfoot>
     </table>
     ${isInvoice && item.amount_tendered != null ? `<p class="doc-more"><b>Cash tendered:</b> ${money(item.amount_tendered)} · <b>Change:</b> ${money(item.change_amount || 0)}</p>` : ''}
+    ${isInvoice && item.payments ? `<p class="doc-more"><b>Payments:</b> ${(() => { try { return JSON.parse(item.payments).map(p => `${esc(p.method)} ${money(p.amount)}${p.reference ? ' (' + esc(p.reference) + ')' : ''}${p.change ? ' · change ' + money(p.change) : ''}`).join(' · '); } catch { return ''; } })()}</p>` : ''}
     ${item.notes ? `<p class="doc-more"><b>Notes:</b> ${esc(item.notes)}</p>` : ''}
-    <p class="doc-more">Thank you for choosing DriveEasy Rentals. All amounts are in NAD and include VAT.</p>
+    <p class="doc-more doc-footer">Thank you for choosing DriveEasy Rentals. All amounts are in NAD and include VAT.</p>
   </div>`;
 }
 
@@ -1155,6 +1161,7 @@ function openDoc(kind, id) {
     : quotesCache.find(q => q.id === +id);
   if (!item) { toast('Document not found. Refresh the page and try again.', 'error'); return; }
   $('#docContent').innerHTML = renderDoc(kind, item);
+  document.title = (kind === 'invoice' ? 'INVOICE ' + item.invoice_no : 'QUOTE ' + item.quote_no);
   docBackdrop.hidden = false;
   docBackdrop.classList.add('printable');
 }
@@ -1247,36 +1254,210 @@ $('#posForm').addEventListener('submit', async e => {
   finally { btn.disabled = false; }
 });
 
-// ---------- Walk-in client invoices ----------
+// ---------- Full point of sale (staff-assisted sale) ----------
 const walkInBackdrop = $('#walkInModalBackdrop');
-$('#addInvoiceBtn').addEventListener('click', () => {
-  $('#walkInForm').reset();
-  walkInBackdrop.hidden = false;
-});
+let posSaleItems = [];
+let posSalePayments = [];
+const PAYMENT_METHODS = ['Cash', 'Card', 'Bank transfer', 'Mobile money'];
+
+function posSaleTotals() {
+  const p = $('#wi_pickup').value, r = $('#wi_return').value;
+  const days = (p && r && r > p) ? Math.max(1, Math.ceil((new Date(r) - new Date(p)) / 86400000)) : 0;
+  let subtotal = 0, vat = 0, total = 0;
+  posSaleItems.forEach(item => {
+    const car = carsCache.find(c => c.id === item.car_id);
+    if (!car || !days) return;
+    let addon = 0;
+    Object.keys(item.add_ons || {}).forEach(k => { if (item.add_ons[k] && ADDON_PRICE[k]) addon += ADDON_PRICE[k]; });
+    const amount = (Number(car.daily_rate) + addon) * days;
+    subtotal += amount / (1 + vatRate / 100);
+    vat += amount - amount / (1 + vatRate / 100);
+    total += amount;
+  });
+  return { days, subtotal, vat, total };
+}
+const ADDON_PRICE = { child_seat: 5, additional_driver: 8, insurance: 12 };
+
+function renderPosSaleItems() {
+  const box = $('#posSaleItems');
+  if (!box) return;
+  const options = carsCache.filter(c => c.status === 'available' || posSaleItems.some(i => i.car_id === c.id));
+  box.innerHTML = posSaleItems.map((item, idx) => `
+    <div class="booking-item" data-index="${idx}">
+      <div class="grid-2">
+        <div class="field"><label>Vehicle ${idx + 1}</label>
+          <select class="ps_car">
+            ${options.map(c => `<option value="${c.id}" ${c.id === item.car_id ? 'selected' : ''}>${esc(c.brand)} ${esc(c.name)} — ${money(c.daily_rate)}/day</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label>Add-ons (per day)</label>
+          ${Object.entries(ADDON_LABELS).map(([k, label]) => `
+            <label class="checkbox-row"><input type="checkbox" class="ps_addon" data-key="${k}" ${item.add_ons[k] ? 'checked' : ''}> ${esc(label)} +${money(ADDON_PRICE[k])}</label>`).join('')}
+        </div>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" data-ps-remove="${idx}" ${posSaleItems.length === 1 ? 'disabled' : ''}>Remove vehicle</button>
+    </div>`).join('');
+
+  $$('#posSaleItems .ps_car').forEach(sel => sel.addEventListener('change', () => {
+    posSaleItems[Number(sel.closest('.booking-item').dataset.index)].car_id = Number(sel.value);
+    renderPosSaleTotals();
+  }));
+  $$('#posSaleItems .ps_addon').forEach(input => input.addEventListener('change', () => {
+    const item = posSaleItems[Number(input.closest('.booking-item').dataset.index)];
+    item.add_ons[input.dataset.key] = input.checked;
+    renderPosSaleTotals();
+  }));
+  $$('#posSaleItems [data-ps-remove]').forEach(btn => btn.addEventListener('click', () => {
+    if (posSaleItems.length === 1) return;
+    posSaleItems.splice(Number(btn.dataset.psRemove), 1);
+    renderPosSaleItems();
+    renderPosSaleTotals();
+  }));
+}
+
+function renderPosSalePayments() {
+  const box = $('#posSalePayments');
+  if (!box) return;
+  box.innerHTML = posSalePayments.map((pay, idx) => `
+    <div class="booking-item" data-index="${idx}">
+      <div class="grid-2">
+        <div class="field"><label>Method ${idx + 1}</label>
+          <select class="ps_method">
+            ${PAYMENT_METHODS.map(m => `<option ${m === pay.method ? 'selected' : ''}>${m}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label>Amount (NAD) *</label><input type="number" class="ps_amount" min="0" step="0.01" value="${pay.amount || ''}"></div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>Reference</label><input class="ps_reference" value="${esc(pay.reference || '')}" placeholder="Receipt / transaction no."></div>
+        ${pay.method === 'Cash' ? `<div class="field"><label>Cash received</label><input type="number" class="ps_tendered" min="0" step="0.01" value="${pay.tendered || ''}"></div>` : ''}
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" data-psp-remove="${idx}" ${posSalePayments.length === 1 ? 'disabled' : ''}>Remove payment</button>
+    </div>`).join('');
+
+  $$('#posSalePayments .ps_method').forEach(sel => sel.addEventListener('change', () => {
+    const pay = posSalePayments[Number(sel.closest('.booking-item').dataset.index)];
+    pay.method = sel.value;
+    if (pay.method === 'Cash') pay.tendered = pay.tendered || pay.amount || 0;
+    renderPosSalePayments();
+    renderPosSaleTotals();
+  }));
+  $$('#posSalePayments .ps_amount').forEach(input => input.addEventListener('input', () => {
+    const pay = posSalePayments[Number(input.closest('.booking-item').dataset.index)];
+    pay.amount = Number(input.value) || 0;
+    if (pay.method === 'Cash') pay.tendered = pay.tendered || pay.amount;
+    renderPosSaleTotals();
+  }));
+  $$('#posSalePayments .ps_reference').forEach(input => input.addEventListener('input', () => {
+    posSalePayments[Number(input.closest('.booking-item').dataset.index)].reference = input.value;
+  }));
+  $$('#posSalePayments .ps_tendered').forEach(input => input.addEventListener('input', () => {
+    posSalePayments[Number(input.closest('.booking-item').dataset.index)].tendered = Number(input.value) || 0;
+    renderPosSaleTotals();
+  }));
+  $$('#posSalePayments [data-psp-remove]').forEach(btn => btn.addEventListener('click', () => {
+    if (posSalePayments.length === 1) return;
+    posSalePayments.splice(Number(btn.dataset.pspRemove), 1);
+    renderPosSalePayments();
+    renderPosSaleTotals();
+  }));
+}
+
+function renderPosSaleTotals() {
+  const box = $('#posSaleSummary');
+  if (!box) return;
+  const { days, subtotal, vat, total } = posSaleTotals();
+  let paid = 0, cash = 0, change = 0;
+  posSalePayments.forEach(p => {
+    paid += Number(p.amount) || 0;
+    if (p.method === 'Cash') {
+      cash += Number(p.tendered) || 0;
+      change += Math.max(0, (Number(p.tendered) || 0) - (Number(p.amount) || 0));
+    }
+  });
+  const balance = paid - total;
+  box.innerHTML = `
+    <div><span>Rental period</span><span>${days} day(s)</span></div>
+    <div><span>Subtotal (excl. VAT)</span><span>${money(subtotal)}</span></div>
+    <div><span>VAT (${vatRate}%)</span><span>${money(vat)}</span></div>
+    <div><span>Total (incl. VAT)</span><span>${money(total)}</span></div>
+    <div><span>Paid</span><span>${money(paid)}</span></div>
+    ${balance < 0 ? `<div class="total" style="color:var(--danger)"><span>Outstanding</span><span>${money(-balance)}</span></div>`
+      : `<div class="total"><span>Change / overpayment</span><span>${money(balance)}</span></div>`}
+    ${cash ? `<div><span>Cash received</span><span>${money(cash)}</span></div><div><span>Cash change</span><span>${money(change)}</span></div>` : ''}`;
+}
+
+async function openPosSale() {
+  try {
+    if (!carsCache.length) carsCache = await api('/api/admin/cars');
+    $('#walkInForm').reset();
+    $('#wi_pickup').value = new Date().toISOString().slice(0, 10);
+    $('#wi_return').value = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+    const first = carsCache.find(c => c.status === 'available');
+    posSaleItems = first ? [{ car_id: first.id, add_ons: {} }] : [];
+    posSalePayments = [{ method: 'Cash', amount: 0, reference: '', tendered: 0 }];
+    renderPosSaleItems();
+    renderPosSalePayments();
+    const totals = posSaleTotals();
+    posSalePayments[0].amount = Math.round(totals.total * 100) / 100;
+    posSalePayments[0].tendered = posSalePayments[0].amount;
+    renderPosSalePayments();
+    renderPosSaleTotals();
+    walkInBackdrop.hidden = false;
+  } catch (err) { toast(err.message, 'error'); }
+}
+$('#addInvoiceBtn').addEventListener('click', openPosSale);
 $('#walkInModalClose').addEventListener('click', () => { walkInBackdrop.hidden = true; });
 walkInBackdrop.addEventListener('click', e => { if (e.target === walkInBackdrop) walkInBackdrop.hidden = true; });
+$('#wi_pickup').addEventListener('change', renderPosSaleTotals);
+$('#wi_return').addEventListener('change', renderPosSaleTotals);
+$('#wi_wants_tax').addEventListener('change', () => { $('#wiTaxFields').hidden = !$('#wi_wants_tax').checked; });
+$('#posAddCar').addEventListener('click', () => {
+  const next = carsCache.find(c => c.status === 'available' && !posSaleItems.some(i => i.car_id === c.id));
+  if (!next) return toast('No more available vehicles.', 'error');
+  posSaleItems.push({ car_id: next.id, add_ons: {} });
+  renderPosSaleItems();
+  renderPosSaleTotals();
+});
+$('#posAddPayment').addEventListener('click', () => {
+  posSalePayments.push({ method: 'Card', amount: 0, reference: '', tendered: null });
+  renderPosSalePayments();
+  renderPosSaleTotals();
+});
 $('#walkInForm').addEventListener('submit', async e => {
   e.preventDefault();
+  const totals = posSaleTotals();
+  const paid = posSalePayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  if (!posSaleItems.length) return toast('Choose at least one vehicle.', 'error');
+  if (paid + 0.01 < totals.total) return toast('Payments do not cover the total.', 'error');
+  const badCash = posSalePayments.find(p => p.method === 'Cash' && (Number(p.tendered) || 0) < Number(p.amount));
+  if (badCash) return toast('Cash received must cover each cash payment.', 'error');
   try {
-    const inv = await api('/api/admin/invoices', {
+    const out = await api('/api/admin/pos/sale', {
       method: 'POST',
       body: {
-        customer_name: $('#wi_name').value,
-        customer_email: $('#wi_email').value,
-        customer_phone: $('#wi_phone').value,
-        description: $('#wi_item').value,
-        total_amount: +$('#wi_amount').value,
-        due_date: $('#wi_due').value,
+        items: posSaleItems.map(i => ({ car_id: i.car_id, add_ons: i.add_ons })),
         pickup_date: $('#wi_pickup').value,
         return_date: $('#wi_return').value,
-        notes: $('#wi_notes').value
+        notes: $('#wi_notes').value,
+        client: {
+          name: $('#wi_name').value, email: $('#wi_email').value, phone: $('#wi_phone').value,
+          license: $('#wi_license').value, wants_tax_invoice: $('#wi_wants_tax').checked,
+          company: $('#wi_company').value, tax_number: $('#wi_taxno').value
+        },
+        payments: posSalePayments.map(p => ({
+          method: p.method, amount: Number(p.amount), reference: p.reference,
+          tendered: p.method === 'Cash' ? Number(p.tendered) : undefined
+        }))
       }
     });
     walkInBackdrop.hidden = true;
-    toast('Invoice ' + inv.invoice_no + ' created.');
+    toast('Sale complete — invoice ' + out.invoice.invoice_no + '.');
     await loadInvoices();
+    loadBookings();
     loadStats();
-    openDoc('invoice', inv.id);
+    openDoc('invoice', out.invoice.id);
+    setTimeout(() => window.print(), 200);
   } catch (err) { toast(err.message, 'error'); }
 });
 
@@ -1303,7 +1484,10 @@ async function loadStaff() {
           </select>
         </td>
         <td><span class="muted small">${esc(String(s.created_at).slice(0, 10))}</span></td>
-        <td><button class="btn btn-danger btn-sm" data-staff-del="${s.id}" type="button">Delete</button></td>
+        <td><div class="table-actions">
+          <button class="btn btn-sm" data-staff-perm="${s.id}" type="button">Permissions</button>
+          <button class="btn btn-danger btn-sm" data-staff-del="${s.id}" type="button">Delete</button>
+        </div></td>
       </tr>`).join('');
     table.innerHTML = `
       <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
@@ -1320,6 +1504,9 @@ async function loadStaff() {
         await api(`/api/admin/staff/${sel.dataset.id}/status`, { method: 'PATCH', body: { status: sel.value } });
         toast('Staff status updated.');
       } catch (err) { toast(err.message, 'error'); loadStaff(); }
+    }));
+    $$('#staffTable [data-staff-perm]').forEach(btn => btn.addEventListener('click', () => {
+      openPermEditor(staff.find(s => s.id === +btn.dataset.staffPerm));
     }));
     $$('#staffTable [data-staff-del]').forEach(btn => btn.addEventListener('click', async () => {
       if (!confirm('Delete this staff account?')) return;
@@ -1351,6 +1538,56 @@ $('#staffForm').addEventListener('submit', async e => {
     });
     staffBackdrop.hidden = true;
     toast('Staff account created.');
+    loadStaff();
+  } catch (err) { toast(err.message, 'error'); }
+});
+
+// ---------- Configurable staff permissions ----------
+const PERMISSION_CATALOG = [
+  'view_dashboard', 'view_revenue', 'view_cars', 'cars:write', 'view_bookings', 'bookings:write',
+  'bookings:approve', 'quotes:write', 'quotes:delete', 'invoices:write', 'invoices:delete',
+  'view_messages', 'messages:write', 'view_reviews', 'reviews:write', 'view_customers',
+  'customers:write', 'view_settings', 'settings:write', 'staff:manage'
+];
+const PERMISSION_LABELS = {
+  view_dashboard: 'View dashboard', view_revenue: 'View revenue & charts (admin / manager)',
+  view_cars: 'View fleet availability', 'cars:write': 'Add / edit / delete cars',
+  view_bookings: 'View bookings', 'bookings:write': 'Edit booking statuses',
+  'bookings:approve': 'Approve rentals via Point of Sale',
+  'quotes:write': 'Create quotations', 'quotes:delete': 'Delete quotations',
+  'invoices:write': 'Create / process invoices', 'invoices:delete': 'Delete invoices',
+  view_messages: 'Check messages', 'messages:write': 'Manage messages',
+  view_reviews: 'Check reviews', 'reviews:write': 'Manage reviews',
+  view_customers: 'View customers', 'customers:write': 'Manage customers',
+  view_settings: 'View site settings', 'settings:write': 'Change site settings',
+  'staff:manage': 'Manage staff accounts'
+};
+const ROLE_DEFAULT_STAFF = ['view_cars', 'view_bookings', 'bookings:approve', 'quotes:write',
+  'invoices:write', 'view_messages', 'view_reviews'];
+const ROLE_DEFAULT_MANAGER = PERMISSION_CATALOG.filter(p => p !== 'staff:manage');
+let permStaffId = null;
+const permBackdrop = $('#permModalBackdrop');
+
+function openPermEditor(staffMember) {
+  if (!staffMember) return;
+  permStaffId = staffMember.id;
+  const owned = staffMember.has_custom_permissions
+    ? staffMember.permissions
+    : (staffMember.role === 'manager' ? ROLE_DEFAULT_MANAGER : ROLE_DEFAULT_STAFF);
+  $('#permModalName').textContent = `${staffMember.full_name} · ${staffMember.role}`;
+  $('#permList').innerHTML = PERMISSION_CATALOG.map(p => `
+    <label class="checkbox-row"><input type="checkbox" value="${p}" ${owned.includes(p) ? 'checked' : ''}> ${PERMISSION_LABELS[p] || p}</label>
+  `).join('');
+  permBackdrop.hidden = false;
+}
+$('#permModalClose').addEventListener('click', () => { permBackdrop.hidden = true; });
+permBackdrop.addEventListener('click', e => { if (e.target === permBackdrop) permBackdrop.hidden = true; });
+$('#permSaveBtn').addEventListener('click', async () => {
+  const permissions = $$('#permList input:checked').map(i => i.value);
+  try {
+    await api(`/api/admin/staff/${permStaffId}/permissions`, { method: 'PATCH', body: { permissions } });
+    permBackdrop.hidden = true;
+    toast('Permissions saved.');
     loadStaff();
   } catch (err) { toast(err.message, 'error'); }
 });

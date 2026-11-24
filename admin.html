@@ -8,22 +8,6 @@
 </head>
 <body class="admin-body">
 
-<!-- Login view -->
-<div class="admin-login" id="loginView">
-  <form class="login-card" id="loginForm">
-    <img src="logo.jpg" alt="DriveEasy Rentals Logo" class="brand-logo" style="width:56px;height:56px;margin:0 auto .8rem">
-    <h1>DriveEasy <span class="brand-accent">Admin</span></h1>
-    <p class="muted">Sign in to control fleet, bookings, customers, messages &amp; website content.</p>
-    <div class="field"><label for="loginUser">Username or email</label><input id="loginUser" required autocomplete="username" placeholder="admin or tomas@driveeasy.example"></div>
-    <div class="field"><label for="loginPass">Password</label><input id="loginPass" type="password" required autocomplete="current-password"></div>
-    <button class="btn btn-accent btn-lg btn-block" type="submit">Sign In</button>
-    <p class="muted small">Admin: <code>admin</code> / <code>admin123</code><br>
-      Staff demo: <code>tomas@driveeasy.example</code> / <code>password123</code> ·
-      Manager demo: <code>ndapewa@driveeasy.example</code> / <code>password123</code></p>
-    <a href="index.html" class="muted small">← Back to Website</a>
-  </form>
-</div>
-
 <!-- App shell -->
 <div class="admin-shell" id="appView" hidden>
   <aside class="admin-sidebar">
@@ -297,6 +281,7 @@
           <div class="field"><label>Transmission *</label><select id="f_transmission"><option>Automatic</option><option>Manual</option></select></div>
           <div class="field"><label>Fuel type *</label><input id="f_fuel" placeholder="Petrol / Diesel" required></div>
           <div class="field"><label>Seats *</label><input id="f_seats" type="number" min="1" max="60" required></div>
+          <div class="field"><label>Quantity (units in fleet) *</label><input id="f_quantity" type="number" min="1" max="100" value="1" required></div>
           <div class="field"><label>Doors</label><input id="f_doors" type="number" min="1" max="10" value="4"></div>
           <div class="field"><label>Status</label>
             <select id="f_status"><option value="available">Available</option><option value="maintenance">Maintenance</option><option value="unavailable">Unavailable</option></select></div>
@@ -407,30 +392,48 @@
   </div>
 </div>
 
-<!-- Walk-in client invoice modal -->
+<!-- Staff point of sale modal -->
 <div class="modal-backdrop" id="walkInModalBackdrop" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="walkInFormTitle">
     <button class="modal-close" id="walkInModalClose" aria-label="Close">×</button>
     <div class="modal-body">
-      <h2 id="walkInFormTitle">New Walk-in Invoice</h2>
-      <p class="muted small">Create a tax invoice for a client without an online booking.</p>
+      <h2 id="walkInFormTitle">Point of Sale — Vehicle Rental</h2>
+      <p class="muted small">Choose vehicles, add the client, take payment and print the invoice.</p>
       <form id="walkInForm" novalidate>
         <div class="grid-2">
           <div class="field"><label>Client name *</label><input id="wi_name" required placeholder="Jane Doe"></div>
           <div class="field"><label>Email</label><input id="wi_email" type="email" placeholder="jane@example.com"></div>
         </div>
-        <div class="field"><label>Phone</label><input id="wi_phone" placeholder="+264 81 000 0000"></div>
-        <div class="field"><label>Item / service description *</label><input id="wi_item" required placeholder="Vehicle rental — Toyota Corolla"></div>
         <div class="grid-2">
-          <div class="field"><label>Amount (NAD, incl. VAT) *</label><input id="wi_amount" type="number" min="0" step="0.01" required></div>
-          <div class="field"><label>Due date</label><input id="wi_due" type="date"></div>
+          <div class="field"><label>Phone</label><input id="wi_phone" placeholder="+264 81 000 0000"></div>
+          <div class="field"><label>Driver's licence</label><input id="wi_license" placeholder="DL-12345"></div>
+        </div>
+        <div class="field">
+          <label class="checkbox-row"><input type="checkbox" id="wi_wants_tax"> Client wants a tax invoice</label>
+        </div>
+        <div id="wiTaxFields" hidden>
+          <div class="grid-2">
+            <div class="field"><label>Company</label><input id="wi_company" placeholder="Company name"></div>
+            <div class="field"><label>Tax number</label><input id="wi_taxno" placeholder="VAT registration number"></div>
+          </div>
         </div>
         <div class="grid-2">
-          <div class="field"><label>Rental start</label><input id="wi_pickup" type="date"></div>
-          <div class="field"><label>Rental end</label><input id="wi_return" type="date"></div>
+          <div class="field"><label>Pickup date *</label><input id="wi_pickup" type="date" required></div>
+          <div class="field"><label>Return date *</label><input id="wi_return" type="date" required></div>
         </div>
+        <div class="field">
+          <label>Vehicles to rent</label>
+          <div id="posSaleItems"></div>
+          <button type="button" class="btn btn-ghost btn-sm" id="posAddCar">+ Add another vehicle</button>
+        </div>
+        <div class="field">
+          <label>Payments (split payments allowed)</label>
+          <div id="posSalePayments"></div>
+          <button type="button" class="btn btn-ghost btn-sm" id="posAddPayment">+ Add another payment</button>
+        </div>
+        <div class="price-breakdown" id="posSaleSummary"></div>
         <div class="field"><label>Notes</label><textarea id="wi_notes" rows="2"></textarea></div>
-        <button class="btn btn-accent btn-lg btn-block" type="submit">Create Invoice</button>
+        <button class="btn btn-accent btn-lg btn-block" type="submit">Process Sale &amp; Print Invoice</button>
       </form>
     </div>
   </div>
@@ -456,6 +459,19 @@
         </div>
         <button class="btn btn-accent btn-lg btn-block" type="submit">Create Account</button>
       </form>
+    </div>
+  </div>
+</div>
+
+<!-- Staff permission editor -->
+<div class="modal-backdrop" id="permModalBackdrop" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="permModalTitle">
+    <button class="modal-close" id="permModalClose" aria-label="Close">×</button>
+    <div class="modal-body">
+      <h2 id="permModalTitle">Staff Permissions</h2>
+      <p class="muted small" id="permModalName"></p>
+      <div class="perm-grid" id="permList"></div>
+      <button class="btn btn-accent btn-lg btn-block" id="permSaveBtn" type="button">Save Permissions</button>
     </div>
   </div>
 </div>

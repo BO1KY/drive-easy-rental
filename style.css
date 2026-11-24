@@ -372,12 +372,43 @@ input.invalid, select.invalid, textarea.invalid { border-color: var(--danger); b
 .doc-more:last-child { margin-bottom: 0; }
 @media (max-width: 640px) { .doc-grid { grid-template-columns: 1fr; } .doc-title { text-align: left; } }
 @media print {
-  @page { margin: 10mm; }
+  @page { size: A4; margin: 12mm; }
   body { background: #fff; }
   body > *:not(.modal-backdrop.printable) { display: none !important; }
   .modal-backdrop.printable { position: static; display: block; background: none; padding: 0; overflow: visible; }
   .modal-backdrop.printable .modal { box-shadow: none; max-height: none; overflow: visible; width: 100%; max-width: 100%; padding: 0; border-radius: 0; animation: none; }
   .modal-backdrop.printable .doc-toolbar, .modal-backdrop.printable .modal-close { display: none !important; }
-  .doc { padding: 0; }
+  .doc { padding: 0; min-height: 270mm; display: flex; flex-direction: column; }
+  .doc .doc-footer { margin-top: auto; margin-bottom: 0; }
   .doc p:last-child { margin-bottom: 0; }
+  .doc, .doc * { animation: none !important; transition: none !important; }
+}
+
+/* ===== Booking items, permissions & polish ===== */
+.booking-item { border: 1px solid var(--border); border-radius: 10px; padding: .8rem; margin-bottom: .7rem; background: var(--bg); }
+.perm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .35rem 1.1rem; margin-bottom: 1rem; max-height: 48vh; overflow-y: auto; }
+@media (max-width: 640px) { .perm-grid { grid-template-columns: 1fr; } }
+
+@keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes popIn { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: scale(1); } }
+@keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: none; } }
+.card, .car-card, .stat-card, .chart-card, .profile-card, .booking-mini, .review-item, .lookup-card, .auth-wrap {
+  animation: fadeUp .45s ease both;
+}
+.car-card:nth-child(2), .stat-card:nth-child(2), .chart-card:nth-child(2) { animation-delay: .05s; }
+.car-card:nth-child(3), .stat-card:nth-child(3), .chart-card:nth-child(3) { animation-delay: .1s; }
+.car-card:nth-child(n+4), .stat-card:nth-child(n+4) { animation-delay: .15s; }
+.page-banner { animation: slideDown .4s ease both; }
+.modal { animation: popIn .22s ease both; }
+.btn { transition: transform .16s ease, box-shadow .16s ease, background .16s ease; }
+.btn:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,.12); }
+.btn:active { transform: translateY(0); }
+.car-card { transition: transform .25s ease, box-shadow .25s ease; }
+.car-card:hover { transform: translateY(-5px); box-shadow: 0 14px 30px rgba(15,76,129,.16); }
+.stat-card { transition: transform .2s ease, box-shadow .2s ease; }
+.stat-card:hover { transform: translateY(-3px); }
+.badge, .status-badge { transition: background .2s ease, transform .2s ease; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
 }

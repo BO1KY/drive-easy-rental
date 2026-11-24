@@ -11,7 +11,8 @@ SQLite database using Node's built-in `node:sqlite` driver (no external database
 - Multi-page site: Home (`/`), Book Now (`/book.html`), About, Contact, Register / My Account, My Booking lookup
 - Fleet grid with photos, specs, ratings, live availability and category/price/transmission/seat filters
 - All prices are in **NAD** with **15% VAT included** in the advertised daily rate (configurable in admin settings)
-- Booking flow computes duration, add-ons and VAT-inclusive totals; the server revalidates price and availability
+- Booking flow computes duration, add-ons and VAT-inclusive totals; clients can book **multiple/different vehicles** in one checkout
+- Fleet quantity is respected: a model with several units stays available until every unit is booked for the dates
 - Booking confirmation with a unique reference code; lookup by code or view bookings while signed in
 - Customer account portal: profile editing, password change, booking history, online cancellation of pending bookings
 - Signed-in clients can rate vehicles 1–5 stars; **reviews are published automatically**
@@ -36,6 +37,9 @@ SQLite database using Node's built-in `node:sqlite` driver (no external database
 - **Point of Sale**: approving a pending rental opens a POS dialog showing subtotal, VAT and total.
   Cash payments capture the amount tendered and display the change; the payer can supply company/tax details
   for a tax invoice. After processing, the invoice is generated/paid and sent to print automatically
+- **Full staff POS**: staff can select vehicles, enter client details, split payments across methods
+  (card/cash/bank transfer/mobile money), calculate cash change and create a paid invoice for walk-in rentals
+- Admin chooses each staff member's exact permissions; revenue and charts are restricted to admin/manager
 - Invoice list has status filters, search and CSV export
 
 **Backend / data**
@@ -52,7 +56,8 @@ npm start
 ```
 
 - Customer site: http://localhost:3000
-- Admin Control Center: http://localhost:3000/admin.html (`admin` / `admin123`)
+- Admin sign-in: http://localhost:3000/admin-login.html (`admin` / `admin123`)
+- Admin Control Center: http://localhost:3000/admin.html
 - Staff demo: `tomas@driveeasy.example` / `password123`
 - Manager demo: `ndapewa@driveeasy.example` / `password123`
 
@@ -71,7 +76,9 @@ CAR RENTAL/
 ├── about.html
 ├── contact.html
 ├── register.html    # registration, sign-in and professional client portal
+├── admin-login.html # separate admin / staff sign-in page
 ├── admin.html       # Admin Control Center
+├── render.yaml      # Render deployment blueprint
 ├── style.css        # responsive stylesheet + printable document styles
 ├── main.js          # shared site helpers and booking page logic
 ├── admin.js         # dashboard charts, CRUD, quotes, invoices, POS, staff
