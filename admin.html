@@ -151,7 +151,13 @@
       <div class="section-head">
         <h1>Tax Invoices</h1>
         <div class="booking-toolbar">
-          <span class="muted small">NAD · VAT included</span>
+          <select id="invoiceStatusFilter" aria-label="Filter invoices by status">
+            <option value="">All statuses</option>
+            <option value="paid">Paid</option>
+            <option value="unpaid">Unpaid</option>
+          </select>
+          <input id="invoiceSearch" type="search" placeholder="Search invoice / client…">
+          <button class="btn btn-ghost" id="exportInvoicesBtn" type="button">Export CSV</button>
           <button class="btn btn-accent" id="addInvoiceBtn" type="button">+ New Invoice</button>
         </div>
       </div>
@@ -362,6 +368,26 @@
           <select id="pos_method">
             <option>Cash</option><option>Card</option><option>Bank transfer</option><option>Mobile money</option>
           </select>
+        </div>
+        <div id="posCashFields" hidden>
+          <div class="grid-2">
+            <div class="field"><label>Amount client pays (NAD) *</label><input id="pos_tendered" type="number" min="0" step="0.01" placeholder="0.00"></div>
+            <div class="field"><label>Change due</label><input id="pos_change" disabled placeholder="N$0.00"></div>
+          </div>
+        </div>
+        <div class="field">
+          <label class="checkbox-row"><input type="checkbox" id="pos_wants_tax"> Client wants a tax invoice</label>
+        </div>
+        <div id="posClientFields" hidden>
+          <div class="grid-2">
+            <div class="field"><label>Client name *</label><input id="pos_c_name" placeholder="Jane Doe"></div>
+            <div class="field"><label>Email</label><input id="pos_c_email" type="email" placeholder="jane@example.com"></div>
+          </div>
+          <div class="grid-2">
+            <div class="field"><label>Phone</label><input id="pos_c_phone" placeholder="+264 81 000 0000"></div>
+            <div class="field"><label>Company</label><input id="pos_c_company" placeholder="Company name"></div>
+          </div>
+          <div class="field"><label>Tax number</label><input id="pos_c_tax" placeholder="VAT registration number"></div>
         </div>
         <div class="field"><label>Payment reference</label><input id="pos_reference" placeholder="Receipt / transaction number (optional)"></div>
         <button class="btn btn-accent btn-lg btn-block" type="submit">Process Payment &amp; Print Invoice</button>

@@ -180,6 +180,17 @@ CREATE INDEX IF NOT EXISTS idx_reviews_car       ON reviews(car_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_status    ON reviews(status);
 `);
 
+const invoiceColumns = new Set(db.prepare('PRAGMA table_info(invoices)').all().map(r => r.name));
+for (const [name, decl] of [
+  ['amount_tendered', 'REAL'],
+  ['change_amount', 'REAL'],
+  ['client_company', "TEXT DEFAULT ''"],
+  ['client_tax_no', "TEXT DEFAULT ''"],
+  ['wants_tax_invoice', 'INTEGER DEFAULT 0']
+]) {
+  if (!invoiceColumns.has(name)) db.exec(`ALTER TABLE invoices ADD COLUMN ${name} ${decl}`);
+}
+
 // ---------- password helpers (scrypt, no external deps) ----------
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');

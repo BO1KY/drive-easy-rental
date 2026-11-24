@@ -33,8 +33,10 @@ SQLite database using Node's built-in `node:sqlite` driver (no external database
 - Contact inbox and review moderation
 - **Quotations**: build a VAT-inclusive quote, print/save as PDF, convert to a booking
 - **Tax invoices**: generate invoices for online bookings **or walk-in clients**, mark as paid, print/save as PDF
-- **Point of Sale**: approving a pending rental opens a POS dialog; after payment the invoice is
-  automatically generated/paid and sent to print
+- **Point of Sale**: approving a pending rental opens a POS dialog showing subtotal, VAT and total.
+  Cash payments capture the amount tendered and display the change; the payer can supply company/tax details
+  for a tax invoice. After processing, the invoice is generated/paid and sent to print automatically
+- Invoice list has status filters, search and CSV export
 
 **Backend / data**
 

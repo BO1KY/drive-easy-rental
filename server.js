@@ -941,19 +941,50 @@ app.post('/api/admin/bookings/:id/approve', requireAdmin, (req, res) => {
   const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(req.params.id);
   if (!booking) return bad(res, 'Booking not found.', 404);
   if (booking.status !== 'pending') return bad(res, 'Only pending bookings can be approved.', 409);
-  const method = String((req.body || {}).payment_method || '').trim();
+  const b = req.body || {};
+  const method = String(b.payment_method || '').trim();
   if (!method) return bad(res, 'Please select a payment method.');
-  const reference = String((req.body || {}).payment_reference || '').trim();
+  const reference = String(b.payment_reference || '').trim();
+  const isCash = method.toLowerCase() === 'cash';
+  let tendered = null;
+  let change = 0;
+  if (isCash) {
+    tendered = Number(b.amount_tendered);
+    if (!Number.isFinite(tendered) || tendered < booking.total_amount) {
+      return bad(res, `Cash amount must be at least ${booking.total_amount}.`);
+    }
+    change = round2(tendered - booking.total_amount);
+  }
+  const client = b.client_details || {};
+  const cName = String(client.customer_name || '').trim();
+  const cEmail = String(client.customer_email || '').trim().toLowerCase();
+  const cPhone = String(client.customer_phone || '').trim();
+  const company = String(client.company || '').trim();
+  const taxNo = String(client.tax_number || '').trim();
+  const wantsTax = !!client.wants_tax_invoice;
+  if (wantsTax && !cName) return bad(res, 'Please enter the client name for the tax invoice.');
   try {
     const result = db.transaction(() => {
       let invoice = db.prepare('SELECT * FROM invoices WHERE booking_id = ?').get(booking.id);
       if (!invoice) invoice = makeInvoiceForBooking(booking, method, reference, 'paid');
-      else {
-        if (invoice.status === 'paid') return { invoice, alreadyPaid: true };
-        db.prepare("UPDATE invoices SET status = 'paid', payment_method = ?, payment_reference = ?, paid_at = datetime('now') WHERE id = ?")
-          .run(method, reference, invoice.id);
-        invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoice.id);
+      else if (invoice.status === 'paid') return { invoice, alreadyPaid: true };
+
+      const sets = [
+        "status = 'paid'", 'payment_method = ?', 'payment_reference = ?', "paid_at = datetime('now')",
+        'amount_tendered = ?', 'change_amount = ?', 'client_company = ?', 'client_tax_no = ?', 'wants_tax_invoice = ?'
+      ];
+      const params = [method, reference, isCash ? round2(tendered) : null, change, company, taxNo, wantsTax ? 1 : 0];
+      if (cName) { sets.push('customer_name = ?'); params.push(cName); }
+      if (cEmail) { sets.push('customer_email = ?'); params.push(cEmail); }
+      if (cPhone) { sets.push('customer_phone = ?'); params.push(cPhone); }
+      if (wantsTax) {
+        const extra = [`TAX INVOICE — ${cName}`, company ? `Company: ${company}` : '', taxNo ? `Tax No: ${taxNo}` : ''].filter(Boolean).join(' | ');
+        sets.push('notes = ?');
+        params.push(extra);
       }
+      params.push(invoice.id);
+      db.prepare(`UPDATE invoices SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+      invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoice.id);
       db.prepare("UPDATE bookings SET status = 'confirmed' WHERE id = ?").run(booking.id);
       return { invoice, alreadyPaid: false };
     })();

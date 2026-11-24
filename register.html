@@ -255,6 +255,7 @@
   }
 
   function showAuth() {
+    window.scrollTo(0, 0);
     $('#authBox').hidden = false;
     $('#portalBox').hidden = true;
     $('#accountBannerTitle').textContent = 'Create Account & Sign In';
@@ -262,6 +263,7 @@
   }
 
   function showPortal(cust, bookings, reviews) {
+    window.scrollTo(0, 0);
     portalProfile = cust;
     $('#authBox').hidden = true;
     $('#portalBox').hidden = false;

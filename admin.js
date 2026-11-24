@@ -69,6 +69,7 @@ $('#loginForm').addEventListener('submit', async e => {
     applyRoleUI();
     $('#adminUser').textContent = `Signed in: ${AUTH.name} (${AUTH.role})`;
     showApp();
+    window.scrollTo(0, 0);
     refreshAll();
     toast('Welcome back, ' + admin.username);
   } catch (err) { toast(err.message, 'error'); }
@@ -988,13 +989,20 @@ $('#quoteForm').addEventListener('submit', async e => {
 });
 
 // ---------- Tax invoices ----------
+let invoiceTimer;
 async function loadInvoices() {
   const table = $('#invoicesTable');
   if (!table) return;
   try {
     const invoices = await api('/api/admin/invoices');
     invoicesCache = invoices;
-    const rows = invoices.map(i => {
+    const status = $('#invoiceStatusFilter').value;
+    const q = $('#invoiceSearch').value.trim().toLowerCase();
+    const visible = invoices.filter(i =>
+      (!status || i.status === status) &&
+      (!q || [i.invoice_no, i.booking_code, i.customer_name, i.customer_email].join(' ').toLowerCase().includes(q))
+    );
+    const rows = visible.map(i => {
       const actions = [`<button class="btn btn-sm" data-iview="${i.id}" type="button">Print</button>`];
       if (i.status !== 'paid') actions.push(`<button class="btn btn-accent btn-sm" data-ipay="${i.id}" type="button">Mark Paid</button>`);
       actions.push(`<button class="btn btn-danger btn-sm" data-idel="${i.id}" type="button">Delete</button>`);
@@ -1013,6 +1021,9 @@ async function loadInvoices() {
       <thead><tr><th>Invoice</th><th>Customer</th><th>Total</th><th>Due</th><th>Status</th><th>Payment</th><th>Actions</th></tr></thead>
       <tbody>${rows || '<tr><td colspan="7" class="muted" style="text-align:center;padding:2rem">No invoices yet.</td></tr>'}</tbody>`;
 
+    $('#invoiceStatusFilter').addEventListener('change', loadInvoices);
+    $('#invoiceSearch').addEventListener('input', () => { clearTimeout(invoiceTimer); invoiceTimer = setTimeout(loadInvoices, 250); });
+
     $$('#invoicesTable [data-iview]').forEach(b => b.addEventListener('click', () => openDoc('invoice', +b.dataset.iview)));
     $$('#invoicesTable [data-ipay]').forEach(b => b.addEventListener('click', () => payInvoice(+b.dataset.ipay)));
     $$('#invoicesTable [data-idel]').forEach(b => b.addEventListener('click', async () => {
@@ -1027,6 +1038,22 @@ async function loadInvoices() {
     }));
   } catch (err) { toast(err.message, 'error'); }
 }
+
+$('#exportInvoicesBtn').addEventListener('click', () => {
+  const header = ['Invoice', 'Booking', 'Client', 'Email', 'Total', 'Subtotal', 'VAT', 'Status', 'Method', 'Paid At'];
+  const rows = invoicesCache.map(i => [i.invoice_no, i.booking_code, i.customer_name, i.customer_email,
+    i.total_amount, i.subtotal, i.vat, i.status, i.payment_method, i.paid_at || '']);
+  const csv = [header, ...rows].map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'driveeasy-invoices.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  toast(`Exported ${rows.length} invoice(s).`);
+});
 
 async function payInvoice(id) {
   const method = prompt('Payment method (Cash, Card, Bank transfer, Mobile money):', 'Bank transfer');
@@ -1088,6 +1115,8 @@ function renderDoc(kind, item) {
       <div>
         <h4>Billed to</h4>
         <p><strong>${esc(item.customer_name)}</strong></p>
+        ${isInvoice && item.client_company ? `<p><strong>${esc(item.client_company)}</strong></p>` : ''}
+        ${isInvoice && item.client_tax_no ? `<p>Tax No: ${esc(item.client_tax_no)}</p>` : ''}
         <p>${esc(item.customer_email)}</p>
         <p>${esc(item.customer_phone || '')}</p>
       </div>
@@ -1114,6 +1143,7 @@ function renderDoc(kind, item) {
         <tr class="doc-total"><td>Total (incl. VAT)</td><td class="right">${money(item.total_amount)}</td></tr>
       </tfoot>
     </table>
+    ${isInvoice && item.amount_tendered != null ? `<p class="doc-more"><b>Cash tendered:</b> ${money(item.amount_tendered)} · <b>Change:</b> ${money(item.change_amount || 0)}</p>` : ''}
     ${item.notes ? `<p class="doc-more"><b>Notes:</b> ${esc(item.notes)}</p>` : ''}
     <p class="doc-more">Thank you for choosing DriveEasy Rentals. All amounts are in NAD and include VAT.</p>
   </div>`;
@@ -1131,32 +1161,79 @@ function openDoc(kind, id) {
 
 // ---------- Point of sale: approve a pending rental ----------
 const posBackdrop = $('#posModalBackdrop');
+let posBooking = null;
+function refreshPosFields() {
+  const isCash = $('#pos_method').value.toLowerCase() === 'cash';
+  $('#posCashFields').hidden = !isCash;
+  const total = posBooking ? Number(posBooking.total_amount) : 0;
+  const tendered = Number($('#pos_tendered').value) || 0;
+  const change = isCash ? Math.round((tendered - total) * 100) / 100 : 0;
+  $('#pos_change').value = isCash ? money(change) : '';
+  $('#pos_tendered').classList.toggle('invalid', isCash && tendered < total);
+}
 function openPos(b) {
+  posBooking = b;
   $('#pos_booking_id').value = b.id;
   $('#pos_method').value = 'Cash';
   $('#pos_reference').value = '';
+  $('#pos_tendered').value = Number(b.total_amount).toFixed(2);
+  $('#pos_wants_tax').checked = false;
+  $('#posClientFields').hidden = true;
+  ['pos_c_name', 'pos_c_email', 'pos_c_phone', 'pos_c_company', 'pos_c_tax'].forEach(id => { $('#' + id).value = ''; });
   $('#posSummary').innerHTML = `
     <div class="pos-summary">
       <div><strong>${esc(b.booking_code)}</strong> · ${esc(b.customer_name)}</div>
       <div class="muted small">${esc(b.car_brand)} ${esc(b.car_name)} · ${esc(b.pickup_date)} → ${esc(b.return_date)} (${b.total_days} days)</div>
       <div class="muted small">${esc(b.customer_email)} · ${esc(b.customer_phone)}</div>
-      <div class="total"><span>Amount due</span><span>${money(b.total_amount)}</span></div>
+      <div class="pos-lines">
+        <div><span>Subtotal (excl. VAT)</span><span>${money(b.subtotal)}</span></div>
+        <div><span>VAT (${vatRate}%)</span><span>${money(b.vat)}</span></div>
+      </div>
+      <div class="total"><span>Amount due (incl. VAT)</span><span>${money(b.total_amount)}</span></div>
     </div>`;
+  refreshPosFields();
   posBackdrop.hidden = false;
 }
+$('#pos_method').addEventListener('change', refreshPosFields);
+$('#pos_tendered').addEventListener('input', refreshPosFields);
+$('#pos_wants_tax').addEventListener('change', () => {
+  const on = $('#pos_wants_tax').checked;
+  $('#posClientFields').hidden = !on;
+  if (on && posBooking) {
+    if (!$('#pos_c_name').value) $('#pos_c_name').value = posBooking.customer_name || '';
+    if (!$('#pos_c_email').value) $('#pos_c_email').value = posBooking.customer_email || '';
+    if (!$('#pos_c_phone').value) $('#pos_c_phone').value = posBooking.customer_phone || '';
+  }
+});
 $('#posModalClose').addEventListener('click', () => { posBackdrop.hidden = true; });
 posBackdrop.addEventListener('click', e => { if (e.target === posBackdrop) posBackdrop.hidden = true; });
 
 $('#posForm').addEventListener('submit', async e => {
   e.preventDefault();
+  const method = $('#pos_method').value;
+  if (method.toLowerCase() === 'cash' && (Number($('#pos_tendered').value) || 0) < Number((posBooking || {}).total_amount || 0)) {
+    return toast('Cash amount must cover the total due.', 'error');
+  }
+  if ($('#pos_wants_tax').checked && !$('#pos_c_name').value.trim()) {
+    return toast('Enter the client name for the tax invoice.', 'error');
+  }
   const btn = $('#posForm button[type="submit"]');
   btn.disabled = true;
   try {
     const out = await api(`/api/admin/bookings/${$('#pos_booking_id').value}/approve`, {
       method: 'POST',
       body: {
-        payment_method: $('#pos_method').value,
-        payment_reference: $('#pos_reference').value
+        payment_method: method,
+        payment_reference: $('#pos_reference').value,
+        amount_tendered: method.toLowerCase() === 'cash' ? Number($('#pos_tendered').value) : undefined,
+        client_details: {
+          wants_tax_invoice: $('#pos_wants_tax').checked,
+          customer_name: $('#pos_c_name').value,
+          customer_email: $('#pos_c_email').value,
+          customer_phone: $('#pos_c_phone').value,
+          company: $('#pos_c_company').value,
+          tax_number: $('#pos_c_tax').value
+        }
       }
     });
     posBackdrop.hidden = true;
