@@ -16,7 +16,6 @@ function applyRoleUI() {
   nav('quotes', 'quotes:write');
   nav('invoices', 'invoices:write');
   nav('staff', 'staff:manage');
-  nav('demo', 'admin:only');
   nav('customers', 'view_customers');
   nav('messages', 'view_messages');
   nav('reviews', 'view_reviews');
@@ -25,6 +24,8 @@ function applyRoleUI() {
   if (addCar) addCar.hidden = !can('cars:write');
   const saveSettings = $('#saveSettingsBtn');
   if (saveSettings) saveSettings.hidden = !can('settings:write');
+  const demoCard = $('#demoDataCard');
+  if (demoCard) demoCard.hidden = !can('admin:only');
   $$('.charts-grid').forEach(el => { el.hidden = !can('view_revenue'); });
   const active = $('.admin-nav button.active');
   if (active && active.hidden) {

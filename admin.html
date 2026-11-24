@@ -19,7 +19,6 @@
       <button data-section="quotes">Quotes</button>
       <button data-section="invoices">Invoices</button>
       <button data-section="staff">Staff</button>
-      <button data-section="demo">Demo Data</button>
       <button data-section="customers">Customers</button>
       <button data-section="messages">Messages <span class="nav-pill" id="messagesPill" hidden>0</span></button>
       <button data-section="reviews">Reviews</button>
@@ -158,20 +157,6 @@
       <div class="table-wrap"><table class="admin-table" id="staffTable"></table></div>
     </section>
 
-    <!-- Demo data -->
-    <section class="admin-section" id="section-demo" hidden>
-      <div class="section-head"><h1>Demo / Sample Data</h1></div>
-      <div class="card">
-        <p class="muted small">Demo records are clearly marked. Removing them never deletes real cars, bookings or clients.</p>
-        <div class="profile-kpis" id="demoCounts"></div>
-        <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:1.2rem">
-          <button class="btn btn-accent" id="addDemoBtn" type="button">+ Add Demo Data</button>
-          <button class="btn btn-danger" id="removeDemoBtn" type="button">Remove Demo Data</button>
-          <button class="btn btn-ghost" id="refreshDemoBtn" type="button">Refresh Counts</button>
-        </div>
-      </div>
-    </section>
-
     <!-- Customers -->
     <section class="admin-section" id="section-customers" hidden>
       <div class="section-head">
@@ -265,6 +250,17 @@
           </div>
         </div>
       </form>
+
+      <div class="settings-card" id="demoDataCard" style="margin-top:1.4rem">
+        <h2>Demo / Sample Data</h2>
+        <p class="muted small">Demo records are clearly marked. Removing them never deletes real cars, bookings or clients.</p>
+        <div class="profile-kpis" id="demoCounts"></div>
+        <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:1.2rem">
+          <button class="btn btn-accent" id="addDemoBtn" type="button">+ Add Demo Data</button>
+          <button class="btn btn-danger" id="removeDemoBtn" type="button">Remove Demo Data</button>
+          <button class="btn btn-ghost" id="refreshDemoBtn" type="button">Refresh Counts</button>
+        </div>
+      </div>
 
       <div class="settings-card" style="margin-top:1.4rem;max-width:520px">
         <h2>Admin Password</h2>
