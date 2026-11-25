@@ -666,6 +666,22 @@ window.DriveEasy = (() => {
     }, { once: true });
   }
 
+  const localPhotos = {
+    corolla: 'Toyota Corolla Sedan.jpg',
+    hilux: 'Toyota Hilux 4x4 Double Cab.jpg',
+    ranger: 'Ford Ranger Double Cab.jpg',
+    jimny: 'Suzuki Jimny 4x4.jpg',
+    fortuner: 'Toyota Fortuner 4x4 SUV.jpg',
+    quantum: 'Toyota Quantum Minibus.jpg',
+    rav4: 'Toyota RAV4 Crossover.jpg'
+  };
+  function carPhoto(car) {
+    const label = `${car.brand || ''} ${car.name || ''}`.toLowerCase();
+    const match = Object.keys(localPhotos).find(key => label.includes(key));
+    if (match) return '/' + encodeURIComponent(localPhotos[match]);
+    return car.image_url || '';
+  }
+
   function starSvg(rating) {
     return Array.from({ length: 5 }, (_, i) =>
       `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.9L12 17.8 5.8 21l1.2-6.9-5-4.9 6.9-1L12 2Z" fill="${i < rating ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.5"/></svg>`
@@ -688,7 +704,7 @@ window.DriveEasy = (() => {
       return `
         <article class="car-card">
           <div class="car-img">
-            <img src="${esc(car.image_url)}" alt="${esc(car.brand)} ${esc(car.name)}" loading="lazy">
+            <img src="${esc(carPhoto(car))}" alt="${esc(car.brand)} ${esc(car.name)}" loading="lazy">
             <span class="badge ${badgeClass}">${badgeText}</span>
             <span class="badge category">${esc(car.category)}</span>
           </div>
@@ -779,10 +795,10 @@ window.DriveEasy = (() => {
       allCars = await res.json();
       renderCars();
       renderFacts(state.settings);
-      const heroCar = allCars.find(car => car.image_url);
+      const heroCar = allCars.find(car => Object.keys(localPhotos).some(key => `${car.brand} ${car.name}`.toLowerCase().includes(key))) || allCars.find(car => car.image_url);
       const heroImage = $('#heroCarImage');
       if (heroCar) {
-        heroImage.src = heroCar.image_url;
+        heroImage.src = carPhoto(heroCar);
         heroImage.alt = `${heroCar.brand} ${heroCar.name}`;
         imageFallback(heroImage, heroCar.brand + ' ' + heroCar.name);
       } else {
