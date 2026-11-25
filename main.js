@@ -615,3 +615,141 @@ window.DriveEasy = (() => {
     loadCars();
   });
 })();
+
+/* ===== Landing page controller (index.html only) ===== */
+(() => {
+  if (!$('#featuredGrid')) return;
+  const { $, $$, esc, money, toast, todayPlus, loadSite } = window.DriveEasy;
+
+  const pickup = $('#qsPickup');
+  const ret = $('#qsReturn');
+  pickup.min = todayPlus(0);
+  pickup.value = todayPlus(1);
+  ret.min = todayPlus(1);
+  ret.value = todayPlus(4);
+  pickup.addEventListener('change', () => {
+    ret.min = pickup.value;
+    if (ret.value <= pickup.value) ret.value = pickup.value;
+  });
+  $('#quickSearchForm').addEventListener('submit', e => {
+    e.preventDefault();
+    if (!pickup.value || !ret.value || ret.value <= pickup.value) {
+      return toast('Return date must be after pickup date.', 'error');
+    }
+    const query = new URLSearchParams({ pickup: pickup.value, ret: ret.value });
+    const category = $('#qsCategory').value;
+    if (category) query.set('category', category);
+    window.location.href = 'book.html?' + query.toString();
+  });
+
+  function imageFallback(img, label) {
+    if (!img) return;
+    img.addEventListener('error', () => {
+      img.src = `https://placehold.co/640x400/0f4c81/ffffff?text=${encodeURIComponent(label || 'Vehicle')}`;
+    }, { once: true });
+  }
+
+  async function loadFeatured() {
+    const grid = $('#featuredGrid');
+    try {
+      const res = await fetch('/api/cars?featured=1');
+      let cars = await res.json();
+      if (!cars.length) cars = (await (await fetch('/api/cars')).json()).slice(0, 4);
+      if (!cars.length) {
+        grid.innerHTML = '<div class="empty-state"><p>No vehicles currently listed.</p></div>';
+        return [];
+      }
+      grid.innerHTML = cars.map(car => {
+        const qty = Number(car.quantity) || 1;
+        const available = car.status === 'available' && car.is_available;
+        const badgeText = car.status !== 'available' ? esc(car.status)
+          : available ? (qty > 1 && car.units_available != null ? `${car.units_available} of ${qty} available` : 'Available')
+            : 'Booked';
+        const badgeClass = car.status !== 'available' ? esc(car.status) : (available ? 'available' : 'booked');
+        return `
+          <article class="car-card">
+            <div class="car-img">
+              <img src="${esc(car.image_url)}" alt="${esc(car.brand)} ${esc(car.name)}" loading="lazy">
+              <span class="badge ${badgeClass}">${badgeText}</span>
+              <span class="badge category">${esc(car.category)}</span>
+            </div>
+            <div class="car-body">
+              <div class="car-title">${esc(car.brand)} ${esc(car.name)} <span class="year">· ${car.year}</span></div>
+              <div class="rating-line">${car.review_count
+                ? `<span class="stars">★</span> ${car.avg_rating} <span class="muted small">(${car.review_count})</span>`
+                : '<span class="muted small">No reviews yet</span>'}</div>
+              <div class="car-meta">
+                <span>${esc(car.transmission)}</span>
+                <span>${esc(car.fuel_type)}</span>
+                <span>${car.seats} seats</span>
+                ${qty > 1 ? `<span>${qty} in fleet</span>` : ''}
+              </div>
+              <p class="car-features">${esc(car.description || '')}</p>
+              <div class="car-foot">
+                <div class="price">${money(car.daily_rate)} <small>/ day · VAT included</small></div>
+                <a class="btn btn-sm btn-accent" href="book.html?carId=${car.id}">Book Now</a>
+              </div>
+            </div>
+          </article>`;
+      }).join('');
+      $$('.car-img img', grid).forEach(img => imageFallback(img, img.alt));
+      return cars;
+    } catch {
+      grid.innerHTML = '<div class="empty-state"><p>Unable to load featured vehicles.</p></div>';
+      return [];
+    }
+  }
+
+  async function loadReviews(cars) {
+    const box = $('#homeReviews');
+    if (!box || !cars.length) {
+      if (box) box.innerHTML = '<div class="empty-state"><p>No customer reviews yet — be the first to share your experience.</p></div>';
+      return;
+    }
+    try {
+      const results = await Promise.all(cars.slice(0, 4).map(async car => {
+        const res = await fetch(`/api/cars/${car.id}/reviews`);
+        if (!res.ok) return [];
+        const data = await res.json();
+        return (data.reviews || []).map(review => ({ ...review, carLabel: `${car.brand} ${car.name}` }));
+      }));
+      const reviews = results.flat().slice(0, 3);
+      if (!reviews.length) {
+        box.innerHTML = '<div class="empty-state"><p>No customer reviews yet — be the first to share your experience.</p></div>';
+        return;
+      }
+      box.innerHTML = reviews.map(review => `
+        <article class="home-review">
+          <div class="stars" aria-label="${review.rating} out of 5 stars">${'★'.repeat(review.rating)}${'☆'.repeat(5 - review.rating)}</div>
+          ${review.title ? `<h3>${esc(review.title)}</h3>` : ''}
+          <p>${esc(review.comment)}</p>
+          <cite>${esc(review.reviewer_name)} · ${esc(review.carLabel)}</cite>
+        </article>`).join('');
+    } catch {
+      box.innerHTML = '<div class="empty-state"><p>Reviews are unavailable right now.</p></div>';
+    }
+  }
+
+  function setupReveal() {
+    const items = $$('.home .reveal');
+    if (!('IntersectionObserver' in window)) {
+      items.forEach(item => item.classList.add('visible'));
+      return;
+    }
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12 });
+    items.forEach(item => observer.observe(item));
+  }
+
+  loadSite().then(async () => {
+    const cars = await loadFeatured();
+    await loadReviews(cars);
+    setupReveal();
+  });
+})();

@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>DriveEasy Rentals — Find &amp; Book Your Perfect Rental Car</title>
-<meta name="description" content="DriveEasy Rentals — modern rental fleet, transparent daily rates, instant online booking, and 24/7 customer support.">
+<meta name="description" content="DriveEasy Rentals — modern rental fleet, transparent NAD rates with VAT included, instant online booking, and 24/7 customer support.">
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="home">
 
 <header class="site-header">
   <div class="container header-inner">
@@ -18,9 +18,10 @@
     <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation" aria-expanded="false">
       <span></span><span></span><span></span>
     </button>
-    <nav class="main-nav" id="mainNav">
+    <nav class="main-nav" id="mainNav" aria-label="Main navigation">
       <a href="index.html" class="active">Home</a>
       <a href="book.html">Book Now</a>
+      <a href="#fleet">Fleet</a>
       <a href="about.html">About Us</a>
       <a href="contact.html">Contact Us</a>
       <a href="register.html" id="navRegisterLink" class="nav-cta">Register / Sign In</a>
@@ -29,21 +30,27 @@
 </header>
 
 <main class="page-main">
-  <section class="hero">
-    <div class="container hero-grid">
-      <div>
+  <!-- 1. HERO -->
+  <section class="home-hero">
+    <div class="container home-hero-grid">
+      <div class="home-hero-copy">
+        <p class="home-eyebrow">Namibia's smarter way to rent</p>
         <h1 data-setting="hero_title">Find &amp; book your perfect rental car</h1>
-        <p class="hero-lead" data-setting="hero_subtitle">Transparent daily rates · Instant availability · Free cancellation on pending bookings</p>
+        <p class="home-hero-lead" data-setting="hero_subtitle">Transparent daily rates · Instant availability · Free cancellation on pending bookings</p>
         <div class="hero-actions">
-          <a href="book.html" class="btn btn-accent btn-lg">Book a Car Now</a>
-          <a href="register.html" class="btn btn-outline-light btn-lg">Create Free Account</a>
+          <a href="book.html" class="btn btn-accent btn-lg">Book Now</a>
+          <a href="#fleet" class="btn btn-outline-light btn-lg">View Fleet</a>
         </div>
+        <p class="home-hero-note">No hidden fees · VAT included · Secure online booking</p>
       </div>
 
-      <div class="hero-card">
-        <h2>Quick Availability Search</h2>
-        <p class="sub">Pick your dates to browse vehicles ready for pickup.</p>
-        <form id="quickSearchForm">
+      <div class="hero-card" aria-label="Quick availability search">
+        <div class="hero-card-head">
+          <span class="home-pill">Quick search</span>
+          <h2>Quick Availability Search</h2>
+          <p class="sub">Pick your dates and we'll show only vehicles free for those days.</p>
+        </div>
+        <form id="quickSearchForm" novalidate>
           <div class="grid-2">
             <div class="field">
               <label for="qsPickup">Pickup date</label>
@@ -71,20 +78,43 @@
     </div>
   </section>
 
-  <section class="container">
-    <div class="stats-strip">
-      <div class="strip-card"><div class="num" data-setting="stat_years">10+</div><div class="lbl">Years on the Road</div></div>
-      <div class="strip-card"><div class="num" data-setting="stat_clients">15,000+</div><div class="lbl">Happy Renters</div></div>
-      <div class="strip-card"><div class="num" data-setting="stat_rating">4.9 / 5</div><div class="lbl">Customer Rating</div></div>
-      <div class="strip-card"><div class="num">24/7</div><div class="lbl">Roadside Assistance</div></div>
+  <!-- 2. TRUST STRIP -->
+  <section class="container" aria-label="Why book with us">
+    <div class="trust-strip reveal">
+      <div class="trust-item">
+        <span class="trust-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1 3 5v6c0 5 3.8 9.3 9 12 5.2-2.7 9-7 9-12V5l-9-4Z"/><path d="m9 12 2 2 4-4"/></svg>
+        </span>
+        <div><strong>No hidden fees</strong><span>What you see is what you pay.</span></div>
+      </div>
+      <div class="trust-item">
+        <span class="trust-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12V8H6a2 2 0 0 1 0-4h12v4"/><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"/><path d="M18 12a2 2 0 0 0 0 4h4v-4h-4Z"/></svg>
+        </span>
+        <div><strong>VAT included</strong><span>All prices include 15% VAT.</span></div>
+      </div>
+      <div class="trust-item">
+        <span class="trust-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="m9 12 2 2 4-4"/></svg>
+        </span>
+        <div><strong>Free cancellation</strong><span>While your booking is pending.</span></div>
+      </div>
+      <div class="trust-item">
+        <span class="trust-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><path d="M12 15v2"/></svg>
+        </span>
+        <div><strong>Secure online booking</strong><span>Your details stay protected.</span></div>
+      </div>
     </div>
   </section>
 
-  <section class="section">
+  <!-- 3. FEATURED FLEET -->
+  <section class="section" id="fleet">
     <div class="container">
       <div class="section-bar">
         <div>
-          <h2>Featured Fleet</h2>
+          <p class="home-eyebrow home-eyebrow-dark">Our fleet</p>
+          <h2>Featured Vehicles</h2>
           <p class="muted">Popular, well-maintained vehicles ready for your next trip.</p>
         </div>
         <a href="book.html" class="btn btn-ghost">View Full Fleet →</a>
@@ -95,9 +125,11 @@
     </div>
   </section>
 
+  <!-- 4. HOW RENTING WORKS -->
   <section class="section section-surface">
     <div class="container">
       <div class="section-head-center">
+        <p class="home-eyebrow home-eyebrow-dark">Simple process</p>
         <h2>How Renting Works</h2>
         <p class="muted">From browsing to keys-in-hand in three simple steps.</p>
       </div>
@@ -121,14 +153,64 @@
     </div>
   </section>
 
+  <!-- 5. WHY CHOOSE US -->
   <section class="section">
+    <div class="container">
+      <div class="section-head-center">
+        <p class="home-eyebrow home-eyebrow-dark">Why DriveEasy</p>
+        <h2>Built around your journey</h2>
+        <p class="muted">A dependable fleet, honest pricing and real people when you need them.</p>
+      </div>
+      <div class="why-grid reveal">
+        <article class="why-card"><span class="why-icon" aria-hidden="true">★</span><h3>Top-rated fleet</h3><p class="muted">Clean, inspected vehicles with real customer ratings.</p></article>
+        <article class="why-card"><span class="why-icon" aria-hidden="true">N$</span><h3>Transparent NAD pricing</h3><p class="muted">VAT included in every advertised daily rate.</p></article>
+        <article class="why-card"><span class="why-icon" aria-hidden="true">24/7</span><h3>Roadside support</h3><p class="muted">Help is a phone call away, wherever you travel.</p></article>
+        <article class="why-card"><span class="why-icon" aria-hidden="true">✓</span><h3>Flexible booking</h3><p class="muted">Cancel free while pending and manage bookings online.</p></article>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. CUSTOMER REVIEWS -->
+  <section class="section section-surface">
+    <div class="container">
+      <div class="section-head-center">
+        <p class="home-eyebrow home-eyebrow-dark">Client feedback</p>
+        <h2>What our renters say</h2>
+        <p class="muted">Real reviews from verified bookings.</p>
+      </div>
+      <div class="reviews-grid" id="homeReviews">
+        <div class="empty-state"><p>Loading customer reviews…</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7. FAQ -->
+  <section class="section">
+    <div class="container faq-wrap">
+      <div>
+        <p class="home-eyebrow home-eyebrow-dark">Good to know</p>
+        <h2>Frequently asked questions</h2>
+        <p class="muted">Everything you need before you book.</p>
+      </div>
+      <div class="faq-list">
+        <details><summary>What is the minimum driver age?</summary><p>Drivers must be at least 21 years old, with a valid licence held for one year or more.</p></details>
+        <details><summary>Which documents do I need?</summary><p>A valid driver's licence, ID or passport and the payment card used for the booking.</p></details>
+        <details><summary>Is a deposit required?</summary><p>A refundable security hold is placed at pickup and released after the vehicle is returned.</p></details>
+        <details><summary>What is the fuel policy?</summary><p>Collect with a full tank and return full, or choose our convenient fuel option at checkout.</p></details>
+        <details><summary>Can I cancel my booking?</summary><p>Yes — pending bookings can be cancelled free of charge from your account or via your confirmation code.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8. FINAL CTA -->
+  <section class="section home-cta-section">
     <div class="container">
       <div class="cta-banner">
         <div>
           <h2>Ready to hit the road?</h2>
           <p>Register an account for faster checkouts and booking management, or reach out for custom fleet requests.</p>
         </div>
-        <div style="display:flex;gap:.8rem;flex-wrap:wrap">
+        <div class="home-cta-actions">
           <a href="book.html" class="btn btn-accent btn-lg">Book Now</a>
           <a href="contact.html" class="btn btn-light btn-lg">Contact Us</a>
         </div>
@@ -153,7 +235,7 @@
           <li><a href="about.html">About Us</a></li>
           <li><a href="contact.html">Contact Us</a></li>
           <li><a href="register.html">Register / My Account</a></li>
-          </ul>
+        </ul>
       </div>
       <div>
         <h3>Contact</h3>
@@ -174,72 +256,5 @@
 
 <div class="toast-container" id="toastContainer"></div>
 <script src="main.js"></script>
-<script>
-(() => {
-  const { $, esc, money, toast, todayPlus, loadSite } = window.DriveEasy;
-
-  const p = $('#qsPickup'), r = $('#qsReturn');
-  p.min = todayPlus(0); p.value = todayPlus(1);
-  r.min = todayPlus(1); r.value = todayPlus(4);
-  p.addEventListener('change', () => { r.min = p.value; if (r.value <= p.value) r.value = p.value; });
-
-  $('#quickSearchForm').addEventListener('submit', e => {
-    e.preventDefault();
-    if (!p.value || !r.value || r.value <= p.value) {
-      return toast('Return date must be after pickup date.', 'error');
-    }
-    const q = new URLSearchParams({ pickup: p.value, ret: r.value });
-    const cat = $('#qsCategory').value;
-    if (cat) q.set('category', cat);
-    window.location.href = 'book.html?' + q.toString();
-  });
-
-  async function loadFeatured() {
-    const grid = $('#featuredGrid');
-    try {
-      const res = await fetch('/api/cars?featured=1');
-      let cars = await res.json();
-      if (!cars.length) {
-        const allRes = await fetch('/api/cars');
-        cars = (await allRes.json()).slice(0, 4);
-      }
-      if (!cars.length) {
-        grid.innerHTML = '<div class="empty-state"><p>No vehicles currently listed.</p></div>';
-        return;
-      }
-      grid.innerHTML = cars.map(car => `
-        <article class="car-card">
-          <div class="car-img">
-            <img src="${esc(car.image_url)}" alt="${esc(car.brand)} ${esc(car.name)}" loading="lazy">
-            <span class="badge ${car.status === 'available' ? (car.is_available ? 'available' : 'booked') : esc(car.status)}">
-              ${car.status === 'available' ? (car.is_available ? ((Number(car.quantity) > 1 && car.units_available != null) ? `${car.units_available} of ${car.quantity} available` : 'Available') : 'Booked') : esc(car.status)}
-            </span>
-            <span class="badge category">${esc(car.category)}</span>
-          </div>
-          <div class="car-body">
-            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:.4rem">
-              <div class="car-title">${esc(car.brand)} ${esc(car.name)} <span class="year">· ${car.year}</span></div>
-              <div class="rating-line">${car.review_count ? `<span class="stars">★</span> ${car.avg_rating} <span class="muted small">(${car.review_count})</span>` : ''}</div>
-            </div>
-            <div class="car-meta">
-              <span>${esc(car.transmission)}</span>
-              <span>${esc(car.fuel_type)}</span>
-              <span>${car.seats} seats</span>
-            </div>
-            <p class="car-features">${esc(car.description || '')}</p>
-            <div class="car-foot">
-              <div class="price">${money(car.daily_rate)} <small>/ day</small></div>
-              <a class="btn btn-sm btn-accent" href="book.html?carId=${car.id}">Book Now</a>
-            </div>
-          </div>
-        </article>`).join('');
-    } catch {
-      grid.innerHTML = '<div class="empty-state"><p>Unable to load featured vehicles.</p></div>';
-    }
-  }
-
-  loadSite().then(loadFeatured);
-})();
-</script>
 </body>
 </html>
