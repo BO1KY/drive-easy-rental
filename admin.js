@@ -174,10 +174,10 @@ function renderSalesChart() {
       const x = padL + idx * step + (step - barW) / 2;
       const y = padT + plotH - h;
       return `<g>
-        <rect x="${x}" y="${y}" width="${barW}" height="${Math.max(2, h)}" rx="5" fill="#0f4c81">
+        <rect x="${x}" y="${y}" width="${barW}" height="${Math.max(2, h)}" rx="5" fill="#0b0b0c">
           <title>${item.year}: ${money(item.revenue)} (${item.bookings} bookings)</title>
         </rect>
-        <text x="${x + barW / 2}" y="${Math.max(12, y - 5)}" text-anchor="middle" font-size="10" font-weight="700" fill="#0f4c81">${esc(money(item.revenue).replace(/\.00$/, ''))}</text>
+        <text x="${x + barW / 2}" y="${Math.max(12, y - 5)}" text-anchor="middle" font-size="10" font-weight="700" fill="#0b0b0c">${esc(money(item.revenue).replace(/\.00$/, ''))}</text>
         <text x="${x + barW / 2}" y="${H - 8}" text-anchor="middle" font-size="11" font-weight="700" fill="#17202a">${item.year} (${item.bookings})</text>
       </g>`;
     }).join('');
@@ -189,7 +189,7 @@ function renderSalesChart() {
   title.textContent = 'Sales Comparison by Month';
   const compareOn = Number($('#chartCompareYearSelect')?.value || chartState.compareYear) > 0;
   legend.innerHTML = `
-    <span class="legend-item"><span class="legend-dot" style="background:#0f4c81"></span>${data.year} Revenue</span>
+    <span class="legend-item"><span class="legend-dot" style="background:#0b0b0c"></span>${data.year} Revenue</span>
     ${compareOn ? `<span class="legend-item"><span class="legend-dot" style="background:#f59e0b"></span>${data.compareYear} Revenue</span>` : ''}`;
 
   const items = data.monthly || [];
@@ -213,12 +213,12 @@ function renderSalesChart() {
     if (compareOn) {
       const h2 = (m.compare_revenue / maxVal) * plotH;
       const y2 = padT + plotH - h2;
-      svg += `<rect x="${gx - barW - 1}" y="${y1}" width="${barW}" height="${Math.max(1, h1)}" rx="3" fill="#0f4c81">
+      svg += `<rect x="${gx - barW - 1}" y="${y1}" width="${barW}" height="${Math.max(1, h1)}" rx="3" fill="#0b0b0c">
         <title>${m.month} ${data.year}: ${money(m.revenue)} (${m.bookings} bookings)</title></rect>`;
       svg += `<rect x="${gx + 1}" y="${y2}" width="${barW}" height="${Math.max(1, h2)}" rx="3" fill="#f59e0b">
         <title>${m.month} ${data.compareYear}: ${money(m.compare_revenue)} (${m.compare_bookings} bookings)</title></rect>`;
     } else {
-      svg += `<rect x="${gx - barW / 2}" y="${y1}" width="${barW}" height="${Math.max(1, h1)}" rx="4" fill="#0f4c81">
+      svg += `<rect x="${gx - barW / 2}" y="${y1}" width="${barW}" height="${Math.max(1, h1)}" rx="4" fill="#0b0b0c">
         <title>${m.month} ${data.year}: ${money(m.revenue)} (${m.bookings} bookings)</title></rect>`;
     }
     svg += `<text x="${gx}" y="${H - 8}" text-anchor="middle" font-size="10" font-weight="600" fill="#5d6b7a">${m.month}</text>`;
@@ -292,7 +292,7 @@ function renderDonut(container, segments, centerLabel, valueFormatter) {
 function renderCategoryChart() {
   const data = chartState.data;
   if (!data) return;
-  const palette = ['#0f4c81', '#f59e0b', '#16a34a', '#2563eb', '#7c3aed'];
+  const palette = ['#0b0b0c', '#f59e0b', '#7a7a75', '#d6d6d2', '#3f3f3c'];
   const segs = (data.byCategory || []).map((c, i) => ({
     label: `${c.category} (${c.bookings})`,
     value: c.revenue,
@@ -305,7 +305,7 @@ function renderCategoryChart() {
 function renderStatusChart() {
   const data = chartState.data;
   if (!data) return;
-  const colors = { pending: '#f59e0b', confirmed: '#2563eb', active: '#7c3aed', completed: '#16a34a', cancelled: '#dc2626' };
+  const colors = { pending: '#f59e0b', confirmed: '#0b0b0c', active: '#5f5f5b', completed: '#3f7d3f', cancelled: '#b42318' };
   const segs = (data.byStatus || []).map(s => ({
     label: s.status[0].toUpperCase() + s.status.slice(1),
     value: s.count,

@@ -1,21 +1,21 @@
 /* ===== DriveEasy Rentals â€” Multi-Page Website & Admin Styles ===== */
 :root {
-  --primary: #0f4c81;
-  --primary-dark: #0a3559;
-  --primary-soft: #e6f0f9;
+  --primary: #0b0b0c;
+  --primary-dark: #0b0b0c;
+  --primary-soft: #f2f2f0;
   --accent: #f59e0b;
-  --accent-dark: #d97706;
-  --bg: #f5f7fb;
+  --accent-dark: #b87905;
+  --bg: #ffffff;
   --surface: #ffffff;
-  --text: #17202a;
-  --muted: #5d6b7a;
-  --border: #e2e8f0;
-  --success: #16a34a;
-  --danger: #dc2626;
-  --warning: #d97706;
-  --radius: 12px;
-  --shadow: 0 6px 24px rgba(15, 76, 129, 0.09);
-  --font: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --text: #0b0b0c;
+  --muted: #5f5f5b;
+  --border: #d6d6d2;
+  --success: #3f7d3f;
+  --danger: #b42318;
+  --warning: #b87905;
+  --radius: 4px;
+  --shadow: none;
+  --font: Inter, Manrope, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -665,3 +665,90 @@ body.home {
   .home .reveal { opacity: 1; transform: none; transition: none; }
 }
 
+
+/* ===================================================================== */
+/* Unified editorial design — non-landing pages + admin                   */
+/* ===================================================================== */
+body:not(.home) { background: #fff; color: #0b0b0c; font-family: var(--font); font-size: clamp(1rem, 0.97rem + 0.15vw, 1.125rem); }
+body:not(.home) :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+body:not(.home) .page-banner,
+body:not(.home) .cta-banner,
+body:not(.home) .hero,
+body:not(.home) .admin-login { background-image: none !important; background-color: #0b0b0c !important; color: #fff; }
+body:not(.home) .page-banner h1,
+body:not(.home) .cta-banner h2,
+body:not(.home) .section-head-center h2,
+body:not(.home) .section-bar h2,
+body:not(.home) .card h2,
+body:not(.home) .settings-card h2 { text-transform: uppercase; letter-spacing: -.035em; line-height: 1.05; font-weight: 900; }
+body:not(.home) .page-banner p,
+body:not(.home) .cta-banner p { color: #c8c8c2; }
+body:not(.home) .section-head-center { text-align: left; margin-left: 0; max-width: 760px; }
+body:not(.home) .section { padding: clamp(3rem, 6vw, 5rem) 0; }
+body:not(.home) .section-surface { background: #f2f2f0; }
+body:not(.home) .card,
+body:not(.home) .settings-card,
+body:not(.home) .login-card,
+body:not(.home) .auth-wrap,
+body:not(.home) .register-card,
+body:not(.home) .chart-card,
+body:not(.home) .stat-card,
+body:not(.home) .contact-form,
+body:not(.home) .contact-details,
+body:not(.home) .lookup-card,
+body:not(.home) .empty-state { box-shadow: none !important; border: 1px solid var(--border); border-radius: 4px; }
+body:not(.home) .btn { min-height: 48px; border-radius: 4px; text-transform: uppercase; letter-spacing: .06em; font-weight: 800; box-shadow: none; }
+body:not(.home) input,
+body:not(.home) select,
+body:not(.home) textarea { min-height: 48px; border-radius: 4px; border: 1px solid var(--border); }
+body:not(.home) .badge,
+body:not(.home) .status-badge,
+body:not(.home) .nav-pill,
+body:not(.home) .role-badge,
+body:not(.home) .verified-pill { border-radius: 3px; }
+body:not(.home) .auth-wrap { max-width: 640px; margin-left: 0; }
+body:not(.home) .login-card { margin: 0; }
+body:not(.home) .site-footer { background: #0b0b0c; border-top: 1px solid #2a2a2a; }
+body:not(.home) .feature-list li::before { content: ""; display: inline-block; width: 6px; height: 6px; background: var(--accent); margin-right: .6rem; vertical-align: middle; }
+body:not(.home) .about-img img { border-radius: 4px; }
+body:not(.home) .rating-line .stars,
+body:not(.home) .review-head .stars { color: var(--accent-dark); }
+
+/* Admin Control Center */
+.admin-body { background: #fff; color: #0b0b0c; font-family: var(--font); }
+.admin-body .site-header { background: #0b0b0c; }
+.admin-body .admin-login { background: #0b0b0c; }
+.admin-body .login-card { border: 1px solid #2a2a2a; background: #0b0b0c; color: #fff; }
+.admin-body .admin-sidebar { background: #0b0b0c; border-right: 1px solid #262626; box-shadow: none; }
+.admin-body .admin-nav button.active { background: var(--accent); color: #0b0b0c; }
+.admin-body .admin-main h1,
+.admin-body .chart-head h2,
+.admin-body .card h2,
+.admin-body .settings-card h2 { text-transform: uppercase; letter-spacing: -.03em; }
+.admin-body .card,
+.admin-body .settings-card,
+.admin-body .chart-card,
+.admin-body .stat-card,
+.admin-body .table-wrap { box-shadow: none; border: 1px solid var(--border); border-radius: 4px; }
+.admin-body .admin-table th { background: #0b0b0c; color: #fff; }
+.admin-body .admin-table { border-collapse: collapse; }
+.admin-body .status-badge,
+.admin-body .nav-pill,
+.admin-body .role-badge { border-radius: 3px; }
+.admin-body .chart-tabs button.active { background: #0b0b0c; color: #fff; }
+.admin-body .hbar-fill { background: #0b0b0c; }
+.admin-body .hbar-fill.accent { background: var(--accent); }
+
+/* Final consistency pass across all pages */
+body .main-nav { box-shadow: none; }
+body .modal { box-shadow: none; }
+body .nav-toggle { min-width: 48px; min-height: 48px; border-radius: 4px; }
+body:not(.home) .auth-tabs,
+body:not(.home) .auth-tabs button,
+body:not(.home) .count-badge,
+body:not(.home) .info-item,
+body:not(.home) .profile-avatar,
+body:not(.home) .profile-kpi,
+body:not(.home) button.active { border-radius: 4px; }
+body:not(.home) .profile-avatar { background: #0b0b0c; color: #fff; }
+body:not(.home) button.active { box-shadow: none !important; }

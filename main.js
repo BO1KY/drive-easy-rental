@@ -39,6 +39,22 @@ window.DriveEasy = (() => {
     return sym + Number(n || 0).toFixed(2);
   }
 
+  const localPhotos = {
+    corolla: 'Toyota Corolla Sedan.jpg',
+    hilux: 'Toyota Hilux 4x4 Double Cab.jpg',
+    ranger: 'Ford Ranger Double Cab.jpg',
+    jimny: 'Suzuki Jimny 4x4.jpg',
+    fortuner: 'Toyota Fortuner 4x4 SUV.jpg',
+    quantum: 'Toyota Quantum Minibus.jpg',
+    rav4: 'Toyota RAV4 Crossover.jpg'
+  };
+  function carPhoto(car) {
+    const label = `${car && car.brand || ''} ${car && car.name || ''}`.toLowerCase();
+    const match = Object.keys(localPhotos).find(key => label.includes(key));
+    if (match) return '/' + encodeURIComponent(localPhotos[match]);
+    return (car && car.image_url) || '';
+  }
+
   function toast(msg, type = 'success') {
     let box = $('#toastContainer');
     if (!box) {
@@ -119,7 +135,7 @@ window.DriveEasy = (() => {
     return state;
   }
 
-  return { $, $$, state, esc, money, toast, todayPlus, daysBetween, loadSite };
+  return { $, $$, state, esc, money, toast, todayPlus, daysBetween, loadSite, carPhoto };
 })();
 
 /* ===== Book Now Page Controller (activates automatically on book.html) ===== */
@@ -212,7 +228,7 @@ window.DriveEasy = (() => {
     carGrid.innerHTML = cars.map(car => `
       <article class="car-card" data-id="${car.id}">
         <div class="car-img">
-          <img src="${esc(car.image_url)}" alt="${esc(car.brand)} ${esc(car.name)}" loading="lazy">
+          <img src="${esc(carPhoto(car))}" alt="${esc(car.brand)} ${esc(car.name)}" loading="lazy">
           ${statusBadge(car)}
           <span class="badge category">${esc(car.category)}</span>
         </div>
@@ -291,7 +307,7 @@ window.DriveEasy = (() => {
     const feats = (car.features || '').split(',').filter(Boolean).map(esc);
     const minAge = site.settings.min_driver_age || '21';
     openModal(`
-      <img class="detail-img" src="${esc(car.image_url)}" alt="${esc(car.brand)} ${esc(car.name)}">
+      <img class="detail-img" src="${esc(carPhoto(car))}" alt="${esc(car.brand)} ${esc(car.name)}">
       <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:.5rem">
         <h2 id="modalTitle" style="margin-bottom:.3rem">${esc(car.brand)} ${esc(car.name)} <span class="muted" style="font-size:1rem">· ${car.year}</span></h2>
         <div class="rating-line" id="modalRatingSummary">${car.review_count ? `<span class="stars">★</span> ${car.avg_rating} / 5 (${car.review_count} review${car.review_count === 1 ? '' : 's'})` : 'No reviews yet'}</div>
