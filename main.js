@@ -801,15 +801,12 @@ window.DriveEasy = (() => {
       allCars = await res.json();
       renderCars();
       renderFacts(state.settings);
-      const heroCar = allCars.find(car => Object.keys(localPhotos).some(key => `${car.brand} ${car.name}`.toLowerCase().includes(key))) || allCars.find(car => car.image_url);
       const heroImage = $('#heroCarImage');
-      if (heroCar) {
-        heroImage.src = carPhoto(heroCar);
-        heroImage.alt = `${heroCar.brand} ${heroCar.name}`;
-        imageFallback(heroImage, heroCar.brand + ' ' + heroCar.name);
-      } else {
+      heroImage.src = '/' + encodeURIComponent('Toyota Quantum Minibus.jpg');
+      heroImage.alt = 'Toyota Quantum minibus';
+      heroImage.addEventListener('error', () => {
         $('#hero').classList.add('no-photo');
-      }
+      }, { once: true });
     } catch {
       $('#featuredGrid').innerHTML = '<div class="empty-state"><p>Cars are unavailable right now.</p></div>';
       $('#hero').classList.add('no-photo');
