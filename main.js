@@ -140,7 +140,7 @@ window.DriveEasy = (() => {
 
 /* ===== Book Now Page Controller (activates automatically on book.html) ===== */
 (() => {
-  const { $, $$, state: site, esc, money, toast, todayPlus, daysBetween, loadSite } = window.DriveEasy;
+  const { $, $$, state: site, esc, money, toast, todayPlus, daysBetween, loadSite, carPhoto } = window.DriveEasy;
   const carGrid = $('#carGrid');
   if (!carGrid || !$('#searchBar')) return;
 
@@ -175,8 +175,7 @@ window.DriveEasy = (() => {
       const v = $(sel).value.trim();
       if (v) p.set(k, v);
     }
-    const maxP = $('#priceFilter').value;
-    if (+maxP < 200) p.set('maxPrice', maxP);
+
     const pu = $('#pickupDate').value, re = $('#returnDate').value;
     if (pu && re && re > pu) {
       p.set('pickup', pu);
@@ -265,21 +264,16 @@ window.DriveEasy = (() => {
 
   let debounce;
   function onFilterChange() { clearTimeout(debounce); debounce = setTimeout(loadCars, 240); }
-  ['#searchInput', '#categoryFilter', '#transmissionFilter', '#seatsFilter', '#priceFilter'].forEach(sel => {
+  ['#searchInput', '#categoryFilter', '#transmissionFilter', '#seatsFilter'].forEach(sel => {
     $(sel).addEventListener('input', onFilterChange);
     $(sel).addEventListener('change', onFilterChange);
   });
-  $('#priceFilter').addEventListener('input', e => {
-    const sym = site.settings.currency_symbol || '$';
-    $('#priceLabel').textContent = sym + e.target.value;
-  });
+
   $('#clearFilters').addEventListener('click', () => {
     $('#searchInput').value = '';
     $('#categoryFilter').value = '';
     $('#transmissionFilter').value = '';
     $('#seatsFilter').value = '';
-    $('#priceFilter').value = 200;
-    $('#priceLabel').textContent = (site.settings.currency_symbol || '$') + '200';
     const pEl = $('#pickupDate'), rEl = $('#returnDate');
     pEl.value = todayPlus(1); rEl.min = pEl.value; rEl.value = todayPlus(4);
     loadCars();
@@ -625,17 +619,13 @@ window.DriveEasy = (() => {
   });
 
   readQueryParams();
-  loadSite().then(() => {
-    const sym = site.settings.currency_symbol || '$';
-    $('#priceLabel').textContent = sym + $('#priceFilter').value;
-    loadCars();
-  });
+  loadSite().then(loadCars);
 })();
 
 /* ===== Landing page controller (index.html only) ===== */
 (() => {
-  if (!$('#featuredGrid')) return;
   const { $, $$, esc, money, toast, todayPlus, loadSite } = window.DriveEasy;
+  if (!$('#featuredGrid')) return;
   let allCars = [];
   let activeCategory = '';
 
