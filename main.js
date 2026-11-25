@@ -620,6 +620,8 @@ window.DriveEasy = (() => {
 (() => {
   if (!$('#featuredGrid')) return;
   const { $, $$, esc, money, toast, todayPlus, loadSite } = window.DriveEasy;
+  let allCars = [];
+  let activeCategory = '';
 
   const pickup = $('#qsPickup');
   const ret = $('#qsReturn');
@@ -631,83 +633,94 @@ window.DriveEasy = (() => {
     ret.min = pickup.value;
     if (ret.value <= pickup.value) ret.value = pickup.value;
   });
+
+  const timeOptions = [];
+  for (let hour = 7; hour <= 20; hour++) {
+    [':00', ':30'].forEach(min => timeOptions.push(String(hour).padStart(2, '0') + min));
+  }
+  const fillTimes = (select, selected) => {
+    select.innerHTML = timeOptions.map(t => `<option ${t === selected ? 'selected' : ''}>${t}</option>`).join('');
+  };
+  fillTimes($('#qsPickupTime'), '09:00');
+  fillTimes($('#qsReturnTime'), '10:00');
+
   $('#quickSearchForm').addEventListener('submit', e => {
     e.preventDefault();
     if (!pickup.value || !ret.value || ret.value <= pickup.value) {
-      return toast('Return date must be after pickup date.', 'error');
+      return toast('Return date must be after pick-up date.', 'error');
     }
-    const query = new URLSearchParams({ pickup: pickup.value, ret: ret.value });
-    const category = $('#qsCategory').value;
-    if (category) query.set('category', category);
+    const query = new URLSearchParams({
+      pickup: pickup.value,
+      ret: ret.value,
+      pickup_time: $('#qsPickupTime').value,
+      return_time: $('#qsReturnTime').value,
+      location: $('#qsLocation').value
+    });
     window.location.href = 'book.html?' + query.toString();
   });
 
   function imageFallback(img, label) {
     if (!img) return;
     img.addEventListener('error', () => {
-      img.src = `https://placehold.co/640x400/0f4c81/ffffff?text=${encodeURIComponent(label || 'Vehicle')}`;
+      img.src = `https://placehold.co/640x400/0b0b0c/f59e0b?text=${encodeURIComponent(label || 'Car')}`;
     }, { once: true });
   }
 
-  async function loadFeatured() {
-    const grid = $('#featuredGrid');
-    try {
-      const res = await fetch('/api/cars?featured=1');
-      let cars = await res.json();
-      if (!cars.length) cars = (await (await fetch('/api/cars')).json()).slice(0, 4);
-      if (!cars.length) {
-        grid.innerHTML = '<div class="empty-state"><p>No vehicles currently listed.</p></div>';
-        return [];
-      }
-      grid.innerHTML = cars.map(car => {
-        const qty = Number(car.quantity) || 1;
-        const available = car.status === 'available' && car.is_available;
-        const badgeText = car.status !== 'available' ? esc(car.status)
-          : available ? (qty > 1 && car.units_available != null ? `${car.units_available} of ${qty} available` : 'Available')
-            : 'Booked';
-        const badgeClass = car.status !== 'available' ? esc(car.status) : (available ? 'available' : 'booked');
-        return `
-          <article class="car-card">
-            <div class="car-img">
-              <img src="${esc(car.image_url)}" alt="${esc(car.brand)} ${esc(car.name)}" loading="lazy">
-              <span class="badge ${badgeClass}">${badgeText}</span>
-              <span class="badge category">${esc(car.category)}</span>
-            </div>
-            <div class="car-body">
-              <div class="car-title">${esc(car.brand)} ${esc(car.name)} <span class="year">· ${car.year}</span></div>
-              <div class="rating-line">${car.review_count
-                ? `<span class="stars">★</span> ${car.avg_rating} <span class="muted small">(${car.review_count})</span>`
-                : '<span class="muted small">No reviews yet</span>'}</div>
-              <div class="car-meta">
-                <span>${esc(car.transmission)}</span>
-                <span>${esc(car.fuel_type)}</span>
-                <span>${car.seats} seats</span>
-                ${qty > 1 ? `<span>${qty} in fleet</span>` : ''}
-              </div>
-              <p class="car-features">${esc(car.description || '')}</p>
-              <div class="car-foot">
-                <div class="price">${money(car.daily_rate)} <small>/ day · VAT included</small></div>
-                <a class="btn btn-sm btn-accent" href="book.html?carId=${car.id}">Book Now</a>
-              </div>
-            </div>
-          </article>`;
-      }).join('');
-      $$('.car-img img', grid).forEach(img => imageFallback(img, img.alt));
-      return cars;
-    } catch {
-      grid.innerHTML = '<div class="empty-state"><p>Unable to load featured vehicles.</p></div>';
-      return [];
-    }
+  function starSvg(rating) {
+    return Array.from({ length: 5 }, (_, i) =>
+      `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.9L12 17.8 5.8 21l1.2-6.9-5-4.9 6.9-1L12 2Z" fill="${i < rating ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.5"/></svg>`
+    ).join('');
   }
 
-  async function loadReviews(cars) {
-    const box = $('#homeReviews');
-    if (!box || !cars.length) {
-      if (box) box.innerHTML = '<div class="empty-state"><p>No customer reviews yet — be the first to share your experience.</p></div>';
+  function renderCars() {
+    const grid = $('#featuredGrid');
+    const cars = activeCategory ? allCars.filter(c => c.category === activeCategory) : allCars;
+    if (!cars.length) {
+      grid.innerHTML = '<div class="empty-state"><p>No cars in this category right now.</p></div>';
       return;
     }
+    grid.innerHTML = cars.map(car => {
+      const qty = Number(car.quantity) || 1;
+      const free = car.status === 'available' && car.is_available;
+      const badgeText = car.status !== 'available' ? esc(car.status)
+        : free ? (qty > 1 && car.units_available != null ? `${car.units_available}/${qty} free` : 'Available') : 'Booked';
+      const badgeClass = car.status !== 'available' ? esc(car.status) : (free ? 'available' : 'booked');
+      return `
+        <article class="car-card">
+          <div class="car-img">
+            <img src="${esc(car.image_url)}" alt="${esc(car.brand)} ${esc(car.name)}" loading="lazy">
+            <span class="badge ${badgeClass}">${badgeText}</span>
+            <span class="badge category">${esc(car.category)}</span>
+          </div>
+          <div class="car-body">
+            <div class="car-title">${esc(car.brand)} ${esc(car.name)}</div>
+            <div class="rating-line">${car.review_count ? `${car.avg_rating} / 5 (${car.review_count})` : 'No reviews yet'}</div>
+            <div class="car-meta"><span>${car.seats} seats</span><span>${esc(car.transmission)}</span><span>${esc(car.fuel_type)}</span></div>
+            <div class="car-foot">
+              <div class="price">${money(car.daily_rate)}<small>per day · VAT included</small></div>
+              <a class="btn btn-accent" href="book.html?carId=${car.id}">Book</a>
+            </div>
+          </div>
+        </article>`;
+    }).join('');
+    $$('.car-img img', grid).forEach(img => imageFallback(img, img.alt));
+  }
+
+  function renderFacts(settings) {
+    const locations = Array.isArray(window.DriveEasy.state.locations) ? window.DriveEasy.state.locations : [];
+    $('#factFleet').textContent = allCars.length ? String(allCars.length) : '[EDIT ME]';
+    $('#factLocations').textContent = locations.length ? String(locations.length) : '[EDIT ME]';
+    const lowest = allCars.length ? Math.min(...allCars.map(c => Number(c.daily_rate) || 0)) : null;
+    $('#factRate').textContent = lowest != null ? money(lowest) : '[EDIT ME]';
+    $('#factContact').textContent = settings.contact_phone || '[EDIT ME]';
+    const minAge = settings.min_driver_age;
+    if (minAge) $('#faqAge').textContent = `At least ${minAge} years, with a valid licence held for one year or more.`;
+  }
+
+  async function loadReviews() {
+    const box = $('#homeReviews');
     try {
-      const results = await Promise.all(cars.slice(0, 4).map(async car => {
+      const results = await Promise.all(allCars.slice(0, 4).map(async car => {
         const res = await fetch(`/api/cars/${car.id}/reviews`);
         if (!res.ok) return [];
         const data = await res.json();
@@ -715,12 +728,12 @@ window.DriveEasy = (() => {
       }));
       const reviews = results.flat().slice(0, 3);
       if (!reviews.length) {
-        box.innerHTML = '<div class="empty-state"><p>No customer reviews yet — be the first to share your experience.</p></div>';
+        box.innerHTML = '<div class="empty-state"><p>No published reviews yet.</p></div>';
         return;
       }
       box.innerHTML = reviews.map(review => `
         <article class="home-review">
-          <div class="stars" aria-label="${review.rating} out of 5 stars">${'★'.repeat(review.rating)}${'☆'.repeat(5 - review.rating)}</div>
+          <div class="stars" aria-label="${review.rating} out of 5">${starSvg(review.rating)}</div>
           ${review.title ? `<h3>${esc(review.title)}</h3>` : ''}
           <p>${esc(review.comment)}</p>
           <cite>${esc(review.reviewer_name)} · ${esc(review.carLabel)}</cite>
@@ -743,13 +756,49 @@ window.DriveEasy = (() => {
           observer.unobserve(entry.target);
         }
       });
-    }, { threshold: 0.12 });
+    }, { threshold: 0.1 });
     items.forEach(item => observer.observe(item));
   }
 
   loadSite().then(async () => {
-    const cars = await loadFeatured();
-    await loadReviews(cars);
+    const state = window.DriveEasy.state;
+    const headline = $('#hero h1');
+    const banned = /seamless|elevate|unlock|journey|world-class|cutting-edge|your perfect|experience the/i;
+    if (banned.test(headline.textContent) || headline.textContent.trim().split(/\s+/).length > 6) {
+      headline.textContent = 'Rent cars without the runaround';
+    }
+    const lead = $('#hero .home-hero-lead');
+    if (banned.test(lead.textContent)) lead.textContent = 'Clean cars, clear NAD prices, booking in minutes.';
+
+    const location = $('#qsLocation');
+    location.innerHTML = (state.locations.length ? state.locations : ['Main Office'])
+      .map(place => `<option value="${esc(place)}">${esc(place)}</option>`).join('');
+
+    try {
+      const res = await fetch('/api/cars');
+      allCars = await res.json();
+      renderCars();
+      renderFacts(state.settings);
+      const heroCar = allCars.find(car => car.image_url);
+      const heroImage = $('#heroCarImage');
+      if (heroCar) {
+        heroImage.src = heroCar.image_url;
+        heroImage.alt = `${heroCar.brand} ${heroCar.name}`;
+        imageFallback(heroImage, heroCar.brand + ' ' + heroCar.name);
+      } else {
+        $('#hero').classList.add('no-photo');
+      }
+    } catch {
+      $('#featuredGrid').innerHTML = '<div class="empty-state"><p>Cars are unavailable right now.</p></div>';
+      $('#hero').classList.add('no-photo');
+    }
+    $$('#categoryTabs .category-tab').forEach(btn => btn.addEventListener('click', () => {
+      $$('#categoryTabs .category-tab').forEach(b => b.classList.toggle('active', b === btn));
+      activeCategory = btn.dataset.category;
+      renderCars();
+    }));
+    await loadReviews();
     setupReveal();
   });
 })();
+
