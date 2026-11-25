@@ -171,6 +171,9 @@ function priceQuote(car, pickup, ret, addOns, settings) {
 function bookingCode() {
   return 'CR-' + crypto.randomBytes(3).toString('hex').toUpperCase();
 }
+function bookingHasPaidInvoice(bookingId) {
+  return !!db.prepare("SELECT 1 FROM invoices WHERE booking_id = ? AND status = 'paid' LIMIT 1").get(bookingId);
+}
 
 // ---------- auth middlewares ----------
 const PERMISSION_CATALOG = [
@@ -968,6 +971,9 @@ app.patch('/api/admin/bookings/:id/status', requirePerm('bookings:write'), (req,
   if (!booking) return bad(res, 'Booking not found.', 404);
   const status = req.body.status;
   if (!BOOKING_STATUSES.includes(status)) return bad(res, 'Invalid status.');
+  if (['confirmed', 'active'].includes(status) && !bookingHasPaidInvoice(booking.id)) {
+    return bad(res, 'Process payment in Point of Sale before setting this booking to ' + status + '.', 409);
+  }
   db.prepare('UPDATE bookings SET status = ? WHERE id = ?').run(status, booking.id);
   res.json({ ok: true, status });
 });
@@ -977,6 +983,9 @@ app.put('/api/admin/bookings/:id', requirePerm('bookings:write'), (req, res) => 
   if (!booking) return bad(res, 'Booking not found.', 404);
   const { status, pickup_location, notes } = req.body || {};
   const nextStatus = status && BOOKING_STATUSES.includes(status) ? status : booking.status;
+  if (['confirmed', 'active'].includes(nextStatus) && !bookingHasPaidInvoice(booking.id)) {
+    return bad(res, 'Process payment in Point of Sale before setting this booking to ' + nextStatus + '.', 409);
+  }
   db.prepare('UPDATE bookings SET status = ?, pickup_location = ?, notes = ? WHERE id = ?').run(
     nextStatus,
     pickup_location !== undefined ? String(pickup_location).trim() : booking.pickup_location,
@@ -1283,7 +1292,10 @@ app.post('/api/admin/pos/sale', writeLimiter, requirePerm('invoices:write'), (re
 app.post('/api/admin/bookings/:id/approve', requirePerm('bookings:approve'), (req, res) => {
   const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(req.params.id);
   if (!booking) return bad(res, 'Booking not found.', 404);
-  if (booking.status !== 'pending') return bad(res, 'Only pending bookings can be approved.', 409);
+  if (!['pending', 'confirmed'].includes(booking.status)) {
+    return bad(res, 'Only pending or confirmed bookings can be processed in Point of Sale.', 409);
+  }
+  const nextStatus = booking.status === 'pending' ? 'confirmed' : 'active';
   const b = req.body || {};
   const method = String(b.payment_method || '').trim();
   if (!method) return bad(res, 'Please select a payment method.');
@@ -1310,7 +1322,6 @@ app.post('/api/admin/bookings/:id/approve', requirePerm('bookings:approve'), (re
     const result = db.transaction(() => {
       let invoice = db.prepare('SELECT * FROM invoices WHERE booking_id = ?').get(booking.id);
       if (!invoice) invoice = makeInvoiceForBooking(booking, method, reference, 'paid');
-      else if (invoice.status === 'paid') return { invoice, alreadyPaid: true };
 
       const sets = [
         "status = 'paid'", 'payment_method = ?', 'payment_reference = ?', "paid_at = datetime('now')",
@@ -1328,7 +1339,7 @@ app.post('/api/admin/bookings/:id/approve', requirePerm('bookings:approve'), (re
       params.push(invoice.id);
       db.prepare(`UPDATE invoices SET ${sets.join(', ')} WHERE id = ?`).run(...params);
       invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoice.id);
-      db.prepare("UPDATE bookings SET status = 'confirmed' WHERE id = ?").run(booking.id);
+      db.prepare('UPDATE bookings SET status = ? WHERE id = ?').run(nextStatus, booking.id);
       return { invoice, alreadyPaid: false };
     })();
     res.json({ ok: true, invoice: clean(result.invoice), booking: clean(db.prepare('SELECT * FROM bookings WHERE id = ?').get(booking.id)) });

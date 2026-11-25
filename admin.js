@@ -533,9 +533,11 @@ async function loadBookings() {
         ? `<button class="btn btn-sm" data-view-inv="${b.invoice_id}" type="button">${esc(b.invoice_no)}</button>
            <br><span class="status-badge status-${b.invoice_status === 'paid' ? 'confirmed' : 'pending'}">${esc(b.invoice_status)}</span>`
         : '<span class="muted">—</span>';
-      const statusCell = b.status === 'pending'
-        ? `<span class="status-badge status-pending">pending</span>
-           <br><button class="btn btn-accent btn-sm" data-pos="${b.id}" type="button" style="margin-top:.35rem">Approve / POS</button>`
+      const paid = b.invoice_status === 'paid';
+      const needsPayment = !paid && ['pending', 'confirmed'].includes(b.status);
+      const statusCell = needsPayment
+        ? `<span class="status-badge status-${esc(b.status)}">${esc(b.status)}</span>
+           <br><button class="btn btn-accent btn-sm" data-pos="${b.id}" type="button" style="margin-top:.35rem">Process / POS</button>`
         : `<select data-id="${b.id}" class="booking-status">
             ${BOOKING_STATUSES.map(s => `<option value="${s}" ${b.status === s ? 'selected' : ''}>${s[0].toUpperCase() + s.slice(1)}</option>`).join('')}
           </select>`;
@@ -563,6 +565,13 @@ async function loadBookings() {
       <tbody>${rows || '<tr><td colspan="9" class="muted" style="text-align:center;padding:2rem">No bookings found.</td></tr>'}</tbody>`;
 
     $$('#bookingsTable .booking-status').forEach(sel => sel.addEventListener('change', async () => {
+      const booking = bookings.find(x => x.id === +sel.dataset.id);
+      if (['confirmed', 'active'].includes(sel.value) && booking && booking.invoice_status !== 'paid') {
+        toast('Process payment first — opening Point of Sale.', 'error');
+        openPos(booking);
+        loadBookings();
+        return;
+      }
       try {
         await api(`/api/admin/bookings/${sel.dataset.id}/status`, { method: 'PATCH', body: { status: sel.value } });
         toast('Booking updated to "' + sel.value + '".');
@@ -614,8 +623,10 @@ function openBookingModal(b) {
       <div><span>Email / Phone</span><span>${esc(b.customer_email)} · ${esc(b.customer_phone)}</span></div>
       <div><span>License Ref</span><span>${esc(b.license_ref || '—')}</span></div>
       <div><span>Subtotal / VAT</span><span>${money(b.subtotal)} / ${money(b.vat)}</span></div>
+      <div><span>Invoice</span><span>${b.invoice_no ? `${esc(b.invoice_no)} · ${esc(b.invoice_status || 'unpaid')}` : 'None'}</span></div>
       <div class="total"><span>Total</span><span>${money(b.total_amount)}</span></div>
     </div>
+    ${b.invoice_status !== 'paid' ? `<button type="button" class="btn btn-accent btn-block" id="ebPosBtn">Process Payment (POS)</button>` : ''}
     <form id="editBookingForm">
       <div class="grid-2">
         <div class="field"><label>Status</label>
@@ -626,9 +637,14 @@ function openBookingModal(b) {
       <div class="field"><label>Notes</label><textarea id="eb_notes" rows="3">${esc(b.notes || '')}</textarea></div>
       <button class="btn btn-accent btn-block" type="submit">Save Booking Changes</button>
     </form>`;
-  detailBackdrop.hidden = false;
+   detailBackdrop.hidden = false;
+   const posButton = $('#ebPosBtn');
+   if (posButton) posButton.addEventListener('click', () => {
+     closeDetailModal();
+     openPos(b);
+   });
 
-  $('#editBookingForm').addEventListener('submit', async e => {
+   $('#editBookingForm').addEventListener('submit', async e => {
     e.preventDefault();
     try {
       await api('/api/admin/bookings/' + b.id, {
